@@ -7,6 +7,7 @@ Agent-agnostic skills bundle. Works with **Claude Code**, **Codex CLI**, **OpenC
 | Skill | Description |
 |-------|-------------|
 | [go-code-quality-check](go-code-quality-check/SKILL.md) | Run static-analysis + security gates on Go projects (`go vet` + `staticcheck` + `semgrep`) via bundled `scripts/staticanalysis.sh`. Returns prioritized fix plan grouped by file and severity. Read-only by default. |
+| [go-sdk-bootstrap](go-sdk-bootstrap/SKILL.md) | Scaffold or extend a Go service that imports `github.com/trypanic/go-sdk`. Encodes the canonical wiring (logger + telemetry + httpclient + postgres + messaging), the directory-vs-package-name divergences (`postgres/`→`database`, `mongo/`→`mongodb`), the tracing constructor triplet, and the errorkit wrapping rules. Includes a verified `main.go` template. |
 
 ## Deprecated
 

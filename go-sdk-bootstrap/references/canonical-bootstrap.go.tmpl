@@ -1,0 +1,82 @@
+// Canonical bootstrap for a Go service that depends on github.com/trypanic/go-sdk.
+//
+// Replace the {{SERVICE_NAME}} / {{SERVICE_VERSION}} / {{OTLP_ENDPOINT}}
+// placeholders before saving as cmd/main.go for single repo or services/cmd/main.go for monorepo
+//
+// Verified against github.com/trypanic/go-sdk@main.
+//
+// Conventions enforced:
+//   1. logger.SetupOTLP runs before logger.Init so the OTLP writer is ready
+//      when the global logger is installed.
+//   2. serviceName is the same string passed to OTLP, logger, and the
+//      telemetry instrumenter, so logs and traces correlate.
+//   3. One *telemetry.Instrumenter is constructed once and passed down.
+//   4. Pools (HTTP client, pgx pool, messaging) are constructed once at main
+//      scope and shared across handlers.
+//   5. All Shutdown / Close calls are deferred in reverse construction order.
+//
+// NOTE: package "postgres" exposes the identifier `database`, package "mongo"
+// exposes `mongodb`. This is intentional. Do not rename the import.
+
+package main
+
+import (
+	"context"
+	"os"
+
+	"github.com/trypanic/go-sdk/errorkit"
+	"github.com/trypanic/go-sdk/httpclient"
+	"github.com/trypanic/go-sdk/httprequest"
+	"github.com/trypanic/go-sdk/logger"
+	"github.com/trypanic/go-sdk/messaging"
+	"github.com/trypanic/go-sdk/postgres" // package identifier: database
+	"github.com/trypanic/go-sdk/telemetry"
+)
+
+const (
+	serviceName    = "{{SERVICE_NAME}}"
+	serviceVersion = "{{SERVICE_VERSION}}"
+	otlpEndpoint   = "{{OTLP_ENDPOINT}}" // e.g. "otel-collector:4317"
+)
+
+func main() {
+	ctx := context.Background()
+
+	// 1. OTLP log provider. Installs the global OTel LoggerProvider.
+	//    Defer Shutdown first so it runs last on teardown.
+	logHandle, otlpWriter := logger.SetupOTLP(ctx, serviceName, otlpEndpoint)
+	defer logHandle.Shutdown(ctx)
+
+	// 2. Global zerolog logger, fanning out to stdout + OTLP.
+	_, cleanup := logger.Init(serviceName, serviceVersion, otlpWriter)
+	defer cleanup.Close()
+
+	// 3. Tracing instrumenter — pass to packages that take *Instrumenter.
+	instr := telemetry.NewInstrumenter(telemetry.InstrumenterConfig{
+		ScopeName: serviceName,
+	})
+
+	// 4. Outbound HTTP. One client + one requester, shared across goroutines.
+	httpC := httpclient.NewDefaultClient()
+	requester := httprequest.NewWithInstrumenter(httpC, instr)
+
+	// 5. Postgres pool. Reads POSTGRES_DSN from env via *FromEnv.
+	//    Tracing is added per StoredProcedure via database.WrapWithInstrumenter[T].
+	pool, err := database.NewPostgresClientFromEnv(database.Config{})
+	if err != nil {
+		logger.Panic(err, "postgres init failed")
+	}
+	defer pool.Close()
+
+	// 6. RabbitMQ. Topology source falls through:
+	//    WithTopology > WithTopologyFile > RABBITMQ_TOPOLOGY_FILE env.
+	mq, err := messaging.NewPubSub(os.Getenv("RABBITMQ_URL"))
+	if err != nil {
+		logger.Panic(err, "messaging init failed")
+	}
+	defer mq.Close()
+
+	// --- service wiring goes here ---
+	_ = requester
+	_ = errorkit.NewError // keep import; replace with real handlers
+}
