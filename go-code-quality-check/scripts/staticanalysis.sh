@@ -42,7 +42,9 @@ SG_ERR_LOG="${OUT_DIR}/semgrep.stderr.log"
 
 cleanup_scratch() {
   rm -f "${VET_RAW}" "${SC_RAW}" "${SG_RAW}"
-  stop_spinner
+  if declare -f stop_spinner >/dev/null; then
+    stop_spinner
+  fi
 }
 trap cleanup_scratch EXIT
 
