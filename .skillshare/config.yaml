@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/runkids/skillshare/main/schemas/project-config.schema.json
+targets:
+  - name: claude
+    skills:
+      mode: symlink
+  - codex
+  - antigravity
+audit:
+  block_threshold: CRITICAL

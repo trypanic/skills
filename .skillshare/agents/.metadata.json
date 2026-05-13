@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "entries": {
+    "cavecrew-builder": {
+      "source": "github.com/juliusbrussee/caveman/agents/cavecrew-builder.md",
+      "kind": "agent",
+      "type": "github-subdir",
+      "installed_at": "2026-05-13T10:22:45.479135335-05:00",
+      "repo_url": "https://github.com/juliusbrussee/caveman.git",
+      "subdir": "agents/cavecrew-builder.md",
+      "version": "63a91ec",
+      "file_hashes": {
+        "cavecrew-builder.md": "sha256:135af639b287ed7534b66d01390c4dc48d98683af52232728a0e87db9c558b3e"
+      }
+    },
+    "cavecrew-investigator": {
+      "source": "github.com/juliusbrussee/caveman/agents/cavecrew-investigator.md",
+      "kind": "agent",
+      "type": "github-subdir",
+      "installed_at": "2026-05-13T10:22:45.48097747-05:00",
+      "repo_url": "https://github.com/juliusbrussee/caveman.git",
+      "subdir": "agents/cavecrew-investigator.md",
+      "version": "63a91ec",
+      "file_hashes": {
+        "cavecrew-investigator.md": "sha256:f1ce01150aeeec7de98d487f41693d27eba1bc9d4cc67f4c774675bb21c24fc2"
+      }
+    },
+    "cavecrew-reviewer": {
+      "source": "github.com/juliusbrussee/caveman/agents/cavecrew-reviewer.md",
+      "kind": "agent",
+      "type": "github-subdir",
+      "installed_at": "2026-05-13T10:22:45.482740684-05:00",
+      "repo_url": "https://github.com/juliusbrussee/caveman.git",
+      "subdir": "agents/cavecrew-reviewer.md",
+      "version": "63a91ec",
+      "file_hashes": {
+        "cavecrew-reviewer.md": "sha256:ae45346edae2cdb97018a38ebdcb79b162c59875cac2921d976a7d7540e4df70"
+      }
+    }
+  }
+}

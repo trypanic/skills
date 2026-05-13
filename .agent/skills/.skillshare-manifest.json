@@ -1,0 +1,13 @@
+{
+  "managed": {
+    "cavecrew": "symlink",
+    "caveman": "symlink",
+    "caveman-commit": "symlink",
+    "caveman-compress": "symlink",
+    "caveman-help": "symlink",
+    "caveman-review": "symlink",
+    "caveman-stats": "symlink",
+    "traceflow": "symlink"
+  },
+  "updated_at": "2026-05-13T10:27:44.985858814-05:00"
+}

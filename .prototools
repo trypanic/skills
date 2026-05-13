@@ -1,0 +1,9 @@
+skillshare = "0.19.10"
+
+[settings]
+auto-clean = true
+auto-install = true
+telemetry = false
+
+[plugins.tools]
+skillshare = "https://raw.githubusercontent.com/trypanic/proto/main/plugins/skillshare.toml"
