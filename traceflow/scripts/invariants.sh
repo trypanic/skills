@@ -228,15 +228,22 @@ inv_5_no_boundary_leaks() {
         | sed 's/^- *//' | grep -v '^$' )
       while read -r p; do
         [ -z "$p" ] && continue
-        # legal if it starts with this area's name, _shared/, or a recognized top-level (services/, migrations/, etc.)
+        # Area-boundary rule applies ONLY to traceflow-managed paths
+        # (domain/, decisions/, specs/, ideas/). Real code/infra paths
+        # outside .traceflow/ are not subject to area scoping — "area"
+        # is a docs-scoping concept, not a code-scoping concept.
         case "$p" in
-          "$area"/*|"domain/$area/"*|"decisions/$area/"*|"specs/$area/"*) ;;
-          "_shared/"*|"domain/_shared/"*|"decisions/_shared/"*) ;;
-          "services/"*|"migrations/"*|"go-pkgs/"*|"internal/"*) ;;
-          *)
-            info "boundary leak: $p in $plan"
-            leaks=$((leaks+1))
+          domain/*|decisions/*|specs/*|ideas/*)
+            case "$p" in
+              "domain/$area/"*|"decisions/$area/"*|"specs/$area/"*|"ideas/$area/"*) ;;
+              "domain/_shared/"*|"decisions/_shared/"*|"specs/_shared/"*|"ideas/_shared/"*) ;;
+              *)
+                info "boundary leak: $p in $plan"
+                leaks=$((leaks+1))
+                ;;
+            esac
             ;;
+          *) ;;
         esac
       done <<< "$paths"
     done
