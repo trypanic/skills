@@ -141,25 +141,32 @@ inv_3_owns_uniqueness() {
     for plan in $active_plans; do
       local spec_id
       spec_id=$(echo "$plan" | sed -n 's|.*/\(S[0-9]\+-[^/]*\)/plan.md|\1|p')
-      awk '/^## Owns/{flag=1; next} /^## /{flag=0} flag && /^- /' "$plan" \
+      awk '
+        /^## Owns/      {owns=1; paths=0; next}
+        /^## /          {owns=0; paths=0; next}
+        owns && /^### Paths/ {paths=1; next}
+        owns && /^### /      {paths=0; next}
+        paths && /^- /
+      ' "$plan" \
         | sed 's/^- *//' \
-        | while read -r p; do
+        | while IFS= read -r p; do
             [ -z "$p" ] && continue
-            echo "$area:$spec_id:$p" >> "$tmpfile"
+            printf '%s\t%s\t%s\n' "$area" "$spec_id" "$p" >> "$tmpfile"
           done
     done
   done
   local dups
-  dups=$(awk -F: '{print $3}' "$tmpfile" | sort | uniq -d)
+  dups=$(awk -F'\t' '{print $3}' "$tmpfile" | sort | uniq -d)
   if [ -z "$dups" ]; then
     ok "$name"
   else
     bad "$name"
-    while read -r dup; do
+    while IFS= read -r dup; do
       info "conflict on path: $dup"
-      grep -F ":$dup" "$tmpfile" | while read -r line; do
-        info "  claimed by $line"
-      done
+      awk -F'\t' -v d="$dup" '$3 == d {print $1 ":" $2 ":" $3}' "$tmpfile" \
+        | while IFS= read -r line; do
+            info "  claimed by $line"
+          done
     done <<< "$dups"
   fi
   rm -f "$tmpfile"
@@ -209,7 +216,13 @@ inv_5_no_boundary_leaks() {
     for plan in $plans; do
       local paths
       paths=$( \
-        ( awk '/^## Owns/{flag=1; next} /^## /{flag=0} flag && /^- /' "$plan"; \
+        ( awk '
+            /^## Owns/      {owns=1; paths=0; next}
+            /^## /          {owns=0; paths=0; next}
+            owns && /^### Paths/ {paths=1; next}
+            owns && /^### /      {paths=0; next}
+            paths && /^- /
+          ' "$plan"; \
           awk '/^## Domain impact/{flag=1; next} /^## /{flag=0} flag && /^- (ADDED|MODIFIED|REMOVED)/' "$plan" \
             | sed -n 's|^- [A-Z]* \([^:#]*\).*|\1|p' ) \
         | sed 's/^- *//' | grep -v '^$' )
