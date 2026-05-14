@@ -123,6 +123,40 @@ Same as "Move a spec through state transitions" plus:
 
 ---
 
+## Draft or refactor a diagram in area `<A>`
+
+This covers three sub-tasks: drafting a new behavior diagram,
+extracting a fragment, and decomposing an existing end-to-end diagram
+into behavior + fragments. See `references/diagrams.md` for the full
+convention and decomposition recipe.
+
+1. `.traceflow/preamble.md`
+2. `.traceflow/domain/MAP.md`
+3. `references/diagrams.md` (the convention)
+4. `domain/<A>/diagrams/README.md` (legend + reading order)
+5. `domain/<A>/diagrams/99-index.md` (existing flows for fragment-promotion check)
+6. `domain/<A>/diagrams/_fragments/` listing (existing canonical owners)
+7. If decomposing an existing diagram: that diagram file + every other
+   behavior diagram suspected of sharing the same sub-sequences (use
+   the index to find them quickly)
+8. `decisions/<A>/INDEX.md` (to verify which sub-sequences are
+   ADR-anchored and therefore auto-qualify for fragment promotion)
+9. `scripts/invariants.sh` (run invariants 7-10 after changes)
+
+When the diagram change is structural enough to warrant a spec (i.e.
+the change adds/removes/moves fragment files), record the impact in
+the active spec's `plan.md` under `## Domain impact (deltas)`:
+
+```
+- ADDED domain/<A>/diagrams/_fragments/F-<slug>.md: <ratifies what>
+- MODIFIED domain/<A>/diagrams/<NN>-<slug>.md#diagram: slimmed to behavior-only, consumes F-<slug>
+```
+
+Skip: other areas entirely (cross-area fragments live in `_shared/`
+and are authored through a separate `_shared/` spec).
+
+---
+
 ## Run an audit (drift check)
 
 1. `scripts/invariants.sh` (full run)

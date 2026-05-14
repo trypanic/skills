@@ -1,11 +1,11 @@
 ---
 name: traceflow
-description: 'Lifecycle-driven documentation skill with spec-delta traceability. Governs four artifact axes (idea, domain, decisions, specs) across per-area scoping with append-only ADRs and file-path reverse-index maps. Use when scaffolding a new traceflow-managed repo, drafting an idea or brainstorm, promoting an idea to durable domain knowledge, proposing or accepting or superseding an ADR, drafting a new spec (implementation slice), updating lifecycle state, archiving a completed spec, running structural invariants, or rebuilding navigation maps. Trigger phrases include "new idea", "draft an idea", "promote idea to domain", "new ADR", "supersede ADR", "add area", "new spec", "archive spec", "check invariants", "rebuild map", "start a brainstorm", "standardize documentation lifecycle". Stack-agnostic and language-agnostic by design. Out of scope, code execution, test running, deployment, build systems, language-specific conventions bound via the conventions-adopted ADR.'
+description: 'Lifecycle-driven documentation skill with spec-delta traceability. Governs four artifact axes (idea, domain, decisions, specs) across per-area scoping with append-only ADRs and file-path reverse-index maps. Also governs behavior-scoped diagrams as a sub-type of domain: three classes (fragment, behavior, composite) with canonical-owner enforcement and anchor-based cross-references. Use when scaffolding a new traceflow-managed repo, drafting an idea or brainstorm, promoting an idea to durable domain knowledge, proposing or accepting or superseding an ADR, drafting a new spec (implementation slice), updating lifecycle state, archiving a completed spec, running structural invariants, rebuilding navigation maps, drafting a new behavior diagram, extracting a fragment, or refactoring an end-to-end diagram into behavior + fragments. Trigger phrases include "new idea", "draft an idea", "promote idea to domain", "new ADR", "supersede ADR", "add area", "new spec", "archive spec", "check invariants", "rebuild map", "start a brainstorm", "standardize documentation lifecycle", "new diagram", "extract fragment", "decompose flow diagram", "behavior-scoped diagram". Stack-agnostic and language-agnostic by design. Out of scope, code execution, test running, deployment, build systems, language-specific conventions bound via the conventions-adopted ADR.'
 license: MIT
 compatibility: 'Bash 4+ required to run scripts/invariants.sh. Skill content is plain markdown otherwise; no other runtime dependencies.'
 metadata:
   author: trypanic
-  version: "0.1.0-draft"
+  version: "0.2.0-draft"
   homepage: "https://github.com/trypanic/skills/tree/main/traceflow"
   outcome-folder: ".traceflow"
 ---
@@ -38,6 +38,7 @@ Activate this skill when the user asks to:
 - move a spec through its lifecycle ("mark spec done", "archive spec")
 - rebuild or audit navigation surfaces ("rebuild map", "check invariants")
 - add a new area to a multi-area repo ("add area", "promote to its own area")
+- draft a new behavior diagram, extract a fragment, or refactor an end-to-end diagram into behavior + fragments ("new diagram", "extract fragment", "decompose flow diagram", "behavior-scoped diagram")
 
 ## When NOT to use
 
@@ -64,6 +65,7 @@ The single binding from traceflow to language-specific concerns is the `conventi
 8. **The agent owns documentation updates.** When an agent performs any action that changes state, it MUST emit the Update Manifest defined below.
 9. **Read the right files for the task, not all of them.** Follow `references/tasks-to-files.md`. Do not pre-read areas you are not working in.
 10. **Idea folder existence IS the state.** No `proposed → ready` ceremony for ideas. Promotion and abandonment are deliberate commits.
+11. **Diagrams are behavior-scoped, fragments are canonical-owner.** A reusable sub-sequence (envelope, handshake, sub-transaction) is a fragment with exactly ONE owning file. Behavior diagrams MUST consume fragments by anchor, not redraw them. See "Diagrams (sub-type of domain)" below.
 
 ---
 
@@ -82,6 +84,86 @@ Atomic architectural decisions (ADRs). Append-only after acceptance. Globally nu
 
 ### specs
 Implementation slices. Per-area folder `specs/<area>/S0NN-name/` with four files: `brief.md` (what + why), `plan.md` (how + spec-deltas + Owns: block), `tasks.md` (decomposition with `[P]` parallel markers), `status.md` (current state). States: `draft → ready (optional) → in-progress → done → closed (terminal, requires reason) → archived`.
+
+---
+
+## Diagrams (sub-type of domain)
+
+Diagrams live under `domain/<area>/diagrams/`. They inherit domain's
+rules: per-area isolation, no duplicated rules, append-mostly.
+Three classes, with a strict canonical-owner rule:
+
+| Class | Purpose | Owns | References |
+|---|---|---|---|
+| **Fragment** | A reusable sub-sequence (envelope, handshake, sub-transaction) | 1 named fragment | nothing |
+| **Behavior** | One decision branch, outcome, or variant — only the slice unique to *this* behavior | nothing | 0..N fragments |
+| **Composite** | Scenario-level rollup naming which behaviors compose into a scenario; no sequence detail | nothing | only behavior diagrams |
+
+### File layout
+
+```
+domain/<area>/diagrams/
+├── _fragments/                  # canonical fragment files (F-<slug>.md)
+├── 00-<composite>.md            # optional scenario rollup
+└── <NN>-<behavior-slug>.md      # behavior diagrams
+```
+
+Cross-area fragments live under `domain/_shared/diagrams/_fragments/`
+and are referenced with the `_shared/` path prefix.
+
+### Promotion bar (when does a sub-sequence become a fragment)
+
+A sub-sequence is promoted to a fragment when at least one is true:
+
+1. **Empirical reuse:** referenced by ≥2 behavior diagrams.
+2. **ADR-anchored contract surface:** corresponds to a named contract
+   in an accepted ADR (e.g. an operation envelope, a transactional
+   template).
+
+Do NOT promote single-use sub-sequences; inline them. Do NOT promote
+rule chains (`ANTI-*`, `BIZ-*`, `INV-*`) — those are referenced by ID
+in prose, not redrawn anywhere.
+
+### Anchor syntax
+
+Every diagram has mandatory `## Steps` with numbered subheadings
+(`### S1.`, `### S2.`, …). Behavior diagrams reference fragments via
+two surfaces, both required when a fragment is consumed:
+
+1. **In-diagram Mermaid note** at the splice point:
+   ```
+   Note over <Alias1>,<Alias2>: ⟶ F-<slug> §S1-S3
+   ```
+   The `⟶ ` prefix is mandatory and parsed by `scripts/invariants.sh`.
+2. **`## Fragments used` block** (the diagram-axis analog of `## Owns`):
+   ```markdown
+   - F-<slug> §S1-S3 — <one-line role>
+   - F-<slug> §all — <one-line role>
+   - none: standalone   # required justification when no fragments consumed
+   ```
+
+Allowed `none` classes: `standalone`, `speculative`.
+
+### Canonical-owner rule
+
+A fragment ID exists in exactly one file (its canonical owner under
+`_fragments/`). Any behavior diagram that would otherwise redraw it
+MUST consume by anchor. Diagram-axis analog of spec `Owns:`
+exclusivity. Edits to a fragment's body are structural changes
+recorded as spec-deltas:
+
+```
+- MODIFIED domain/<area>/diagrams/_fragments/F-<slug>.md#S2: <what changes, why>
+```
+
+### Templates
+
+- `assets/diagram-fragment.md`
+- `assets/diagram-behavior.md`
+- `assets/diagram-composite.md`
+
+Full convention, decomposition recipe, and worked example in
+`references/diagrams.md`.
 
 ---
 
@@ -341,6 +423,10 @@ Omissions are visible to human reviewers. The manifest substitutes for a validat
 4. Every delta target path in any spec `plan.md` either exists OR is part of an ADDED row OR is justified by a typed NONE entry.
 5. No delta path or `Owns:` path crosses area boundaries (must start with `<this-area>/` or `_shared/`).
 6. Every ADR has the mandatory `type:` frontmatter, valued from the enum.
+7. Every `F-<slug> §<range>` anchor referenced by a behavior diagram resolves to a real `### S<N>` heading in the canonical fragment file.
+8. Each fragment ID exists in exactly one file (single canonical owner across `_fragments/` buckets, including `_shared/`).
+9. Cross-area fragment references resolve only under `domain/_shared/diagrams/_fragments/`.
+10. Every behavior diagram (any non-composite, non-fragment `.md` under `domain/<area>/diagrams/`) has a `## Fragments used` block (a typed-`none` entry is allowed and satisfies the check).
 
 Failures are reported, not silently fixed.
 
@@ -362,6 +448,7 @@ Top level of this skill:
 
 - `references/lifecycle.md` — full state machines, topology, three legal paths (standard, hotfix, spike)
 - `references/tasks-to-files.md` — reading map per task type
+- `references/diagrams.md` — behavior-scoped diagram convention, decomposition recipe, worked example
 - `scripts/invariants.sh` — bash invariants suite
 - `references/migration.md` — from spec-kit, OpenSpec, ad-hoc, or legacy traceflow
 - `references/examples.md` — worked example (multi-area Go monorepo)

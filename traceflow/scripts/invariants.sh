@@ -252,6 +252,112 @@ inv_5_no_boundary_leaks() {
 }
 
 #
+# Helpers for diagram invariants (7-10).
+#
+
+# list every diagrams/ directory under domain/, including _shared/
+diagram_dirs() {
+  if [ -n "$AREA_FILTER" ]; then
+    local d="$TF_DIR/domain/$AREA_FILTER/diagrams"
+    [ -d "$d" ] && echo "$d"
+    return
+  fi
+  find "$TF_DIR/domain" -mindepth 2 -maxdepth 2 -type d -name 'diagrams' 2>/dev/null
+}
+
+# list every fragment file (canonical-owner candidates) across all areas
+fragment_files() {
+  find "$TF_DIR/domain" -path '*/diagrams/_fragments/F-*.md' 2>/dev/null
+}
+
+# list every behavior diagram. Behavior diagrams MUST follow the
+# <NN>-<slug>.md convention. We treat files matching 01-* through 98-*
+# as behaviors. 00-* is reserved for composites; 99-* for the index.
+# Non-numeric files (README, COVERAGE, ad-hoc notes) are ignored — they
+# fall outside the diagram axis.
+behavior_files() {
+  for d in $(diagram_dirs); do
+    find "$d" -maxdepth 1 -type f -regextype posix-extended \
+      -regex '.*/(0[1-9]|[1-8][0-9]|9[0-8])-[a-z0-9][a-z0-9_-]*\.md' 2>/dev/null
+  done
+}
+
+# all diagram files including fragments and composites
+all_diagram_files() {
+  for d in $(diagram_dirs); do
+    find "$d" -type f -name '*.md' 2>/dev/null \
+      | grep -vE '/(README|99-index)\.md$' || true
+    [ -d "$d/_fragments" ] && find "$d/_fragments" -type f -name 'F-*.md' 2>/dev/null
+  done
+}
+
+# extract every fragment anchor from a diagram file (from both Mermaid notes and Fragments-used block)
+# emits one line per anchor: "<fragment-id>\t<step-spec>"
+extract_anchors() {
+  local file="$1"
+  # Mermaid splice markers: lines containing ⟶ F-<slug> §<range>
+  # Also from `## Fragments used` block bullets.
+  grep -oE '(_shared/)?F-[a-z0-9][a-z0-9_-]*[[:space:]]*§[[:space:]]*[A-Za-z0-9_,-]+' "$file" 2>/dev/null \
+    | sed -E 's/[[:space:]]*§[[:space:]]*/\t/' \
+    | sort -u
+}
+
+# resolve a fragment ID (with optional _shared/ prefix) to its canonical file path
+# echoes path on stdout if found, empty otherwise. echoes "AMBIGUOUS" if >1 file.
+resolve_fragment() {
+  local fid="$1"
+  local slug shared_prefix
+  case "$fid" in
+    _shared/F-*) shared_prefix=1; slug="${fid#_shared/}" ;;
+    F-*)         shared_prefix=0; slug="$fid" ;;
+    *)           echo ""; return 0 ;;
+  esac
+
+  local matches
+  if [ "$shared_prefix" = "1" ]; then
+    matches=$(find "$TF_DIR/domain/_shared/diagrams/_fragments" -maxdepth 1 -name "${slug}.md" 2>/dev/null)
+  else
+    matches=$(find "$TF_DIR/domain" -path '*/diagrams/_fragments/*' -name "${slug}.md" 2>/dev/null)
+  fi
+  local count
+  count=$(echo "$matches" | grep -c . 2>/dev/null || echo 0)
+  if [ "$count" = "0" ] || [ -z "$matches" ]; then
+    echo ""
+  elif [ "$count" = "1" ]; then
+    echo "$matches"
+  else
+    echo "AMBIGUOUS"
+  fi
+}
+
+# expand a step-spec like "S1-S3", "S1,S4", "all" into a list of step numbers
+# echoes one step number per line ("all" returns the sentinel ALL)
+expand_steps() {
+  local spec="$1"
+  if [ "$spec" = "all" ]; then
+    echo "ALL"
+    return
+  fi
+  # split on commas first, then handle ranges
+  local part
+  for part in $(echo "$spec" | tr ',' ' '); do
+    case "$part" in
+      S*-S*)
+        local lo hi
+        lo=$(echo "$part" | sed -nE 's/^S([0-9]+)-S[0-9]+$/\1/p')
+        hi=$(echo "$part" | sed -nE 's/^S[0-9]+-S([0-9]+)$/\1/p')
+        if [ -n "$lo" ] && [ -n "$hi" ]; then
+          seq "$lo" "$hi"
+        fi
+        ;;
+      S*)
+        echo "$part" | sed -nE 's/^S([0-9]+)$/\1/p'
+        ;;
+    esac
+  done
+}
+
+#
 # Invariant 6: every ADR has a mandatory type: frontmatter from the enum.
 #
 inv_6_adr_type_enum() {
@@ -274,6 +380,137 @@ inv_6_adr_type_enum() {
 }
 
 #
+# Invariant 7: every F-<slug> §<range> anchor resolves to a real ### SN heading
+# in the canonical fragment file.
+#
+inv_7_anchors_resolve() {
+  want 7 || return 0
+  local name="7. Fragment anchors resolve to real step headings"
+  local unresolved=0
+  local diag
+  for diag in $(behavior_files); do
+    [ -z "$diag" ] && continue
+    while IFS=$'\t' read -r fid spec; do
+      [ -z "$fid" ] && continue
+      local path
+      path=$(resolve_fragment "$fid")
+      if [ -z "$path" ]; then
+        info "no canonical owner for $fid (referenced in $diag)"
+        unresolved=$((unresolved+1))
+        continue
+      fi
+      if [ "$path" = "AMBIGUOUS" ]; then
+        # invariant 8 reports this in detail; skip here
+        continue
+      fi
+      if [ "$spec" = "all" ]; then
+        continue
+      fi
+      local step
+      for step in $(expand_steps "$spec"); do
+        [ "$step" = "ALL" ] && continue
+        [ -z "$step" ] && continue
+        if ! grep -qE "^### S${step}\." "$path"; then
+          info "$fid §S$step does not resolve in $path (referenced in $diag)"
+          unresolved=$((unresolved+1))
+        fi
+      done
+    done < <(extract_anchors "$diag")
+  done
+  if [ $unresolved -eq 0 ]; then ok "$name"; else bad "$name ($unresolved unresolved anchors)"; fi
+}
+
+#
+# Invariant 8: each fragment ID exists in exactly one file (single canonical owner).
+#
+inv_8_fragment_uniqueness() {
+  want 8 || return 0
+  local name="8. Fragment IDs have a single canonical owner"
+  local tmpfile
+  tmpfile=$(mktemp)
+  local f basename slug
+  for f in $(fragment_files); do
+    basename=$(basename "$f" .md)
+    printf '%s\t%s\n' "$basename" "$f" >> "$tmpfile"
+  done
+  local dups
+  dups=$(awk -F'\t' '{print $1}' "$tmpfile" | sort | uniq -d)
+  if [ -z "$dups" ]; then
+    ok "$name"
+  else
+    bad "$name"
+    local dup
+    while IFS= read -r dup; do
+      [ -z "$dup" ] && continue
+      info "duplicate fragment: $dup"
+      awk -F'\t' -v d="$dup" '$1 == d {print "  " $2}' "$tmpfile" \
+        | while IFS= read -r line; do
+            info "$line"
+          done
+    done <<< "$dups"
+  fi
+  rm -f "$tmpfile"
+}
+
+#
+# Invariant 9: cross-area fragment references resolve only under
+# domain/_shared/diagrams/_fragments/.
+#
+inv_9_cross_area_fragments() {
+  want 9 || return 0
+  local name="9. Cross-area fragment refs scoped to _shared/"
+  local leaks=0
+  local diag
+  for diag in $(behavior_files); do
+    [ -z "$diag" ] && continue
+    # determine this diagram's area
+    local area
+    area=$(echo "$diag" | sed -nE 's|.*/domain/([^/]+)/diagrams/.*|\1|p')
+    [ -z "$area" ] && continue
+    while IFS=$'\t' read -r fid spec; do
+      [ -z "$fid" ] && continue
+      case "$fid" in
+        _shared/F-*) continue ;;            # explicitly shared — fine
+        F-*) ;;                             # area-local reference
+        *) continue ;;
+      esac
+      # for area-local refs, check the fragment is owned by THIS area's bucket
+      local matches
+      matches=$(find "$TF_DIR/domain/$area/diagrams/_fragments" -maxdepth 1 -name "${fid}.md" 2>/dev/null)
+      if [ -z "$matches" ]; then
+        # not in this area — is it elsewhere (cross-area leak) or absent?
+        local elsewhere
+        elsewhere=$(find "$TF_DIR/domain" -path "*/diagrams/_fragments/${fid}.md" 2>/dev/null)
+        if [ -n "$elsewhere" ]; then
+          info "cross-area leak: $diag references $fid, owned by $elsewhere"
+          info "  (move to domain/_shared/diagrams/_fragments/ and reference as _shared/$fid, OR copy into area $area)"
+          leaks=$((leaks+1))
+        fi
+      fi
+    done < <(extract_anchors "$diag")
+  done
+  if [ $leaks -eq 0 ]; then ok "$name"; else bad "$name ($leaks cross-area leaks)"; fi
+}
+
+#
+# Invariant 10: every behavior diagram has a `## Fragments used` block.
+#
+inv_10_fragments_used_block() {
+  want 10 || return 0
+  local name="10. Behavior diagrams have ## Fragments used block"
+  local missing=0
+  local diag
+  for diag in $(behavior_files); do
+    [ -z "$diag" ] && continue
+    if ! grep -qE '^## Fragments used' "$diag"; then
+      info "missing ## Fragments used in $diag"
+      missing=$((missing+1))
+    fi
+  done
+  if [ $missing -eq 0 ]; then ok "$name"; else bad "$name ($missing missing)"; fi
+}
+
+#
 # Run all invariants.
 #
 echo "traceflow invariants: dir=$TF_DIR area=${AREA_FILTER:-all}"
@@ -285,6 +522,10 @@ inv_3_owns_uniqueness
 inv_4_delta_paths_resolve
 inv_5_no_boundary_leaks
 inv_6_adr_type_enum
+inv_7_anchors_resolve
+inv_8_fragment_uniqueness
+inv_9_cross_area_fragments
+inv_10_fragments_used_block
 
 echo
 echo "summary: $PASS pass, $FAIL fail"
