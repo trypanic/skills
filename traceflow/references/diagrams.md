@@ -10,6 +10,46 @@ it when you need detail beyond the protocol summary.
 
 ---
 
+## 0. Authoring trigger (diagrams are derived)
+
+A diagram is a **consequence** of an ADR or a domain edit, not a
+first-class artifact that requires its own spec. The agent derives
+diagrams from existing decisions and domain content; it does not
+plan them.
+
+### Triggers that produce a new or updated diagram
+
+| Trigger | What the agent does |
+|---|---|
+| An ADR with behavioral impact moves `proposed → accepted` | In the same operation as recording the accept, read the ADR body and the domain content it cites. Create new behavior diagrams for each newly-ratified flow; update existing diagrams where the ADR changes a step, an envelope, or a participant. |
+| A domain edit lands (idea promoted, business rule added, entity or state machine defined, anti-pattern documented) | Derive the matching diagram updates in the same operation. New flows get new behavior diagrams. New invariants or rules become referenced notes in existing diagrams, not redrawn anywhere. |
+| The diagram convention itself changes (e.g., this skill bumps and adopts a new fragment shape via a superseding `conventions-adopted` ADR) | The convention-adopting ADR triggers the consequent diagram refactor as a direct domain edit. No spec is needed. |
+| A code spec adds, removes, or modifies a flow branch in the area it owns | The spec records the diagram change in its `## Domain impact (deltas)` block alongside the code Owns. The spec is the audit trail. |
+
+### When a spec IS needed
+
+Use a spec ONLY when code work outside `domain/<area>/diagrams/` is
+the primary driver. In that case the diagram updates ride on the
+spec's existing `## Domain impact` deltas. Concrete rule of thumb:
+**if the only files changing are under `domain/<area>/diagrams/`,
+you do not need a spec.** Edit directly, log the activity in
+`specs/<area>/STATUS.md`.
+
+### Audit trail without a spec
+
+Direct domain edits (including diagram refactors) are recorded by:
+
+- The triggering ADR's body (cites the diagram changes it expects).
+- The git commit message that performs the edit.
+- A one-line entry in `specs/<area>/STATUS.md` under a "Domain edits
+  triggered by ADR-NNN" subsection (or under the relevant ADR's
+  activity block).
+
+No `plan.md`, no `tasks.md`, no `status.md` — those are spec
+artifacts and specs cover code work.
+
+---
+
 ## 1. Three classes
 
 | Class | Purpose | Owns | References |
@@ -218,16 +258,26 @@ For each promoted sub-sequence:
   behavior(s) that consume it.
 - Re-run `bash scripts/invariants.sh --invariant 7` and 8 to verify.
 
-### Step 6: record the deltas
+### Step 6: record the trigger
 
-The decomposition is a domain edit. The spec that performs it
-records its impact in `plan.md`:
+The decomposition is a domain edit. Where it gets recorded depends
+on the trigger (per section 0):
 
-```markdown
-- ADDED domain/<area>/diagrams/_fragments/F-announce-start.md: ratifies the OP-16 envelope per ADR-NNN
-- MODIFIED domain/<area>/diagrams/08-execute-task-success.md#diagram: slimmed to behavior-only; consumes F-announce-start §S1-S3
-- MODIFIED domain/<area>/diagrams/29-execute-parent-task-multi-variation.md#diagram: slimmed to behavior-only; consumes F-announce-start §S1-S3, F-report-outcome-success §all
-```
+- **Triggered by an ADR** (most common for convention adoption,
+  fragment promotion driven by a new contract surface). Record under
+  a "Domain edits triggered by ADR-NNN" subsection in
+  `specs/<area>/STATUS.md`, naming the files added or modified. No
+  spec wrapper.
+- **Triggered by a code spec** (a new feature added a flow branch).
+  Record the diagram changes in the spec's `## Domain impact (deltas)`
+  block:
+  ```markdown
+  - ADDED domain/<area>/diagrams/_fragments/F-announce-start.md: ratifies the OP-16 envelope per ADR-NNN
+  - MODIFIED domain/<area>/diagrams/29-execute-parent-task-multi-variation.md#diagram: new multi-variation branch added by this spec
+  ```
+- **Triggered by a domain edit** (idea promotion, new rule added).
+  Record as part of the same domain-edit STATUS log entry that
+  promotes the content.
 
 ---
 

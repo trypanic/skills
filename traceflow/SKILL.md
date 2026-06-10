@@ -65,7 +65,7 @@ The single binding from traceflow to language-specific concerns is the `conventi
 8. **The agent owns documentation updates.** When an agent performs any action that changes state, it MUST emit the Update Manifest defined below.
 9. **Read the right files for the task, not all of them.** Follow `references/tasks-to-files.md`. Do not pre-read areas you are not working in.
 10. **Idea folder existence IS the state.** No `proposed → ready` ceremony for ideas. Promotion and abandonment are deliberate commits.
-11. **Diagrams are behavior-scoped, fragments are canonical-owner.** A reusable sub-sequence (envelope, handshake, sub-transaction) is a fragment with exactly ONE owning file. Behavior diagrams MUST consume fragments by anchor, not redraw them. See "Diagrams (sub-type of domain)" below.
+11. **Diagrams are derived consequences, not planned artifacts.** A diagram is created or updated as a consequence of an accepted ADR or a domain edit, in the same operation that performs the trigger. No separate spec is required when the only files changing are under `domain/<area>/diagrams/`. Reusable sub-sequences are extracted as fragments with exactly ONE canonical owner; behavior diagrams MUST consume fragments by anchor, not redraw them. See "Diagrams (sub-type of domain)" below.
 
 ---
 
@@ -91,6 +91,39 @@ Implementation slices. Per-area folder `specs/<area>/S0NN-name/` with four files
 
 Diagrams live under `domain/<area>/diagrams/`. They inherit domain's
 rules: per-area isolation, no duplicated rules, append-mostly.
+
+### Diagrams are derived, not planned
+
+A diagram is a **consequence** of an ADR or a domain edit, not a
+first-class artifact requiring its own spec. The agent's job is to
+derive diagrams from existing decisions and domain content:
+
+- When an ADR with behavioral impact is **accepted**, the agent
+  reads the ADR body and the domain content it touches, then creates
+  or updates the affected diagrams in the same operation.
+- When a domain edit lands (idea promoted, business rule added,
+  entity defined, anti-pattern documented), the agent derives the
+  matching diagram updates from that content in the same operation.
+- When the diagram convention itself changes (e.g., this skill bumps
+  and adopts a new fragment shape), the convention-adopting ADR
+  triggers the consequent diagram refactor as a direct domain edit.
+
+Specs continue to declare diagram deltas in their `## Domain impact`
+ONLY when code work drives a new behavior or modifies an existing
+one (a new flow branch from a new feature, a renamed operation in a
+wire-format change, etc.). For convention-driven or
+understanding-driven refactors that touch no code: **no spec
+wrapper**. The triggering ADR or domain edit is the audit trail; the
+activity log lives in `specs/<area>/STATUS.md`.
+
+Concrete rule of thumb: if the only files changing are under
+`domain/<area>/diagrams/`, you do not need a spec. Edit directly, log
+the activity. If files outside `domain/` also change (code,
+migrations, configuration), then a spec is appropriate and the
+diagram changes ride on its `## Domain impact` deltas.
+
+### Three classes
+
 Three classes, with a strict canonical-owner rule:
 
 | Class | Purpose | Owns | References |
@@ -459,7 +492,7 @@ Top level of this skill:
 
 ## Versioning and self-pinning
 
-Projects pin the version of this skill via their `conventions-adopted` ADR. Example body excerpt:
+A `conventions-adopted` ADR records that **this project binds itself to traceflow and to some set of supporting skills**. That binding IS the project-level decision: it commits the repo to the lifecycle, the artifact axes, the diagram convention, and any repo-local deltas to the vendored scripts. The version number in the ADR body is a **snapshot of the moment the binding was decided**, not a frozen contract.
 
 ```
 This area adopts:
@@ -467,4 +500,23 @@ This area adopts:
 - <other skills...>
 ```
 
-When the skill upgrades, the project supersedes its `conventions-adopted` ADR with a new one referencing the new version. The upgrade is itself a traceable decision.
+### Skill version bumps are maintenance, not ADRs
+
+Picking up a routine upstream skill bump (e.g., `0.1.0 → 0.2.0`, including draft / pre-release versions) is **maintenance**, not a project decision. Do NOT open a superseding `conventions-adopted` ADR for it. Instead:
+
+1. Re-vendor any vendored scripts (e.g. `scripts/invariants.sh`) and re-apply documented repo-local deltas.
+2. Log the bump as a one-line entry under `## Recent activity` (or the local equivalent) in the area `STATUS.md`. The git commit message names the files; the STATUS entry names the version delta and what changed.
+3. Apply any consequent derived edits (e.g. diagram refactors per the new convention) as direct domain edits per the rules in "Diagrams (sub-type of domain)" and `references/diagrams.md §0`.
+
+ADR-026's body will name the old version; that's fine — the body is a frozen snapshot, the project is on the upstream's current draft unless an ADR explicitly pins otherwise.
+
+### When a skill change DOES warrant a new ADR
+
+Open a superseding `conventions-adopted` ADR only when the upstream change forces a real project-level choice:
+
+- **Deliberate version pin / freeze.** "We are staying on `0.1.0` because the `0.2.0` convention break is too costly for now" — that IS a decision.
+- **Breaking change requiring repo-level adaptation.** A skill major bump that invalidates existing artifacts and forces a migration plan: the *migration approach* is the decision, not the version number itself.
+- **Skill substitution.** Replacing one pinned skill with another (e.g. dropping a go-* skill in favor of a different one), or adding a wholly new skill to the binding.
+- **Repo-local deltas to vendored scripts/assets** changing materially (a new exception to invariant 5, a new boundary allow-list entry, etc.).
+
+In each of these cases the ADR records the *choice*, not the version pickup itself.

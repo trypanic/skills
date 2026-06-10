@@ -112,7 +112,8 @@ rather than a silent drift.
 
 ## Decision
 
-The repo adopts the following skills at these versions:
+The repo adopts the following skills, snapshotted at the versions
+current at the time of this binding:
 
 - `traceflow@0.1.0` (this doc lifecycle)
 - `go-modularization@v1.2`
@@ -120,8 +121,14 @@ The repo adopts the following skills at these versions:
 - `go-sdk-bootstrap@v0.4`
 - `go-code-quality-check@v0.2`
 
-Any upgrade supersedes this ADR with a new ADR-NNN that lists the new
-versions and the rationale.
+The version numbers above are snapshots, not frozen pins. Routine
+upstream bumps (including draft / pre-release versions) are picked
+up as maintenance and logged in the area STATUS without a new ADR.
+A superseding `conventions-adopted` ADR is opened only when the
+upstream change forces a real project-level choice — a deliberate
+version freeze, a breaking change with migration planning, a skill
+substitution, or a material change to repo-local deltas. See
+`SKILL.md §Versioning and self-pinning`.
 
 ## Consequences
 

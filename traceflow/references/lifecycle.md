@@ -159,10 +159,10 @@ end-of-turn report; this table is the input to that report.
 |---|---|
 | Idea created | `ideas/<area>/<topic>/README.md`, `ideas/<area>/<topic>/transcript.md` |
 | Idea iterated | append to `transcript.md` after each exchange; edit `README.md` as prose stabilizes |
-| Idea promoted | one or more files under `domain/<area>/`; `specs/<area>/STATUS.md` (Ideas promoted log); `domain/glossary.md` if new terms; `domain/MAP.md` ONLY if a new area emerges; idea folder deleted |
+| Idea promoted | one or more files under `domain/<area>/`; `specs/<area>/STATUS.md` (Ideas promoted log); `domain/glossary.md` if new terms; `domain/MAP.md` ONLY if a new area emerges; if the promoted content describes a behavior or flow, derive consequent diagram updates under `domain/<area>/diagrams/` in the same operation; idea folder deleted |
 | Idea abandoned | `specs/<area>/STATUS.md` (Ideas abandoned log, one line); idea folder deleted |
 | ADR proposed | `decisions/<area>/ADR-NNN-<slug>.md` (frontmatter `status: proposed`) |
-| ADR accepted | ADR file (`status: accepted`); `decisions/<area>/INDEX.md` (append row with `ADR-NNN | type | summary | accepted`) |
+| ADR accepted | ADR file (`status: accepted`); `decisions/<area>/INDEX.md` (append row with `ADR-NNN | type | summary | accepted`); if the ADR has behavioral impact, derive consequent diagram updates under `domain/<area>/diagrams/` in the same operation and log under "Domain edits triggered by ADR-NNN" in `specs/<area>/STATUS.md` |
 | ADR superseded | superseded ADR's Status header ONLY (no body edit); superseding ADR's body references it; both INDEX rows updated |
 | ADR deprecated | ADR's Status header ONLY; INDEX row updated |
 | Spec drafted | `specs/<area>/S0NN-<slug>/{brief, plan, tasks, status}.md`; `specs/<area>/STATUS.md` (append row) |
@@ -174,6 +174,44 @@ end-of-turn report; this table is the input to that report.
 | New area promoted | `domain/MAP.md` (new row + dependency edges); `domain/<area>/README.md` scaffolded; `decisions/<area>/INDEX.md` scaffolded; `specs/<area>/STATUS.md` scaffolded; `specs/<area>/MAP.md` scaffolded; `STATUS.md` (global, new row); promotion ADR added in `decisions/_shared/` |
 
 STATUS rows are append-only. MAP rows allow in-place edits when ownership transfers.
+
+### Direct domain edits and tooling maintenance (no spec wrapper, no ADR)
+
+Some changes touch only `domain/<area>/` content or only the
+tooling layer. These are NOT decisions and do NOT warrant a spec or
+an ADR.
+
+**Direct domain edits.** Content under `domain/<area>/` (including
+any diagram under `domain/<area>/diagrams/`) changes without an
+accompanying code change. Examples:
+
+- A diagram refactor derived from accepting an ADR that ratified a
+  new behavior.
+- A diagram update derived from a domain edit that defined a new
+  rule or entity.
+- A clarifying rewrite of a domain file with no behavioral change.
+
+**Tooling maintenance.** A vendored skill script or asset is
+re-synced from upstream (routine pickups of new skill versions,
+including draft / pre-release). Repo-local deltas are re-applied
+per their headers. Examples:
+
+- `scripts/invariants.sh` re-vendored from a newer traceflow draft.
+- A skill template under `assets/` re-synced after a fix upstream.
+
+Both kinds MUST be logged in `specs/<area>/STATUS.md` (under
+`## Recent activity` or a similar maintenance log) naming the
+trigger or the version delta. The commit message names the files;
+the STATUS log gives the audit trail. No `plan.md`/`tasks.md`/
+`status.md` artifacts are created. No `conventions-adopted` ADR is
+opened — see `SKILL.md §Versioning and self-pinning` for the rules
+on when a skill change DOES warrant a new ADR (deliberate version
+pin, breaking change requiring migration, skill substitution,
+material repo-local-delta change).
+
+If the same edit also touches code outside `domain/<area>/`, it is
+NOT a direct domain edit — it is part of a spec, and the diagram
+changes ride on the spec's `## Domain impact` deltas.
 
 ---
 

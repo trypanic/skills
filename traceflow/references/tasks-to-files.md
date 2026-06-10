@@ -125,35 +125,50 @@ Same as "Move a spec through state transitions" plus:
 
 ## Draft or refactor a diagram in area `<A>`
 
-This covers three sub-tasks: drafting a new behavior diagram,
-extracting a fragment, and decomposing an existing end-to-end diagram
-into behavior + fragments. See `references/diagrams.md` for the full
-convention and decomposition recipe.
+Diagrams are **derived** from ADRs and domain content (see
+`references/diagrams.md §0`). They are NOT planned via specs. This
+task fires in three situations:
+
+1. Right after an ADR with behavioral impact is accepted.
+2. Right after a domain edit that introduces or changes a behavior.
+3. As a direct refactor (e.g., extracting a fragment after a
+   convention adoption).
+
+In none of these cases do you create a `plan.md`/`tasks.md`/
+`status.md`. The audit trail is the triggering ADR or domain edit
+plus a one-line activity entry in `specs/<A>/STATUS.md`.
+
+Read order:
 
 1. `.traceflow/preamble.md`
 2. `.traceflow/domain/MAP.md`
-3. `references/diagrams.md` (the convention)
-4. `domain/<A>/diagrams/README.md` (legend + reading order)
-5. `domain/<A>/diagrams/99-index.md` (existing flows for fragment-promotion check)
-6. `domain/<A>/diagrams/_fragments/` listing (existing canonical owners)
-7. If decomposing an existing diagram: that diagram file + every other
-   behavior diagram suspected of sharing the same sub-sequences (use
-   the index to find them quickly)
-8. `decisions/<A>/INDEX.md` (to verify which sub-sequences are
+3. `references/diagrams.md` (the convention, especially §0 trigger
+   and §6 decomposition recipe)
+4. The triggering ADR (if any) or the changed domain file
+5. `domain/<A>/diagrams/README.md` (legend + reading order)
+6. `domain/<A>/diagrams/99-index.md` (existing flows for
+   fragment-promotion check)
+7. `domain/<A>/diagrams/_fragments/` listing (existing canonical
+   owners)
+8. If decomposing an existing diagram: that diagram file + every
+   other behavior diagram suspected of sharing the same sub-sequences
+   (use the index to find them quickly)
+9. `decisions/<A>/INDEX.md` (to verify which sub-sequences are
    ADR-anchored and therefore auto-qualify for fragment promotion)
-9. `scripts/invariants.sh` (run invariants 7-10 after changes)
+10. `scripts/invariants.sh` (run invariants 7-10 after changes)
 
-When the diagram change is structural enough to warrant a spec (i.e.
-the change adds/removes/moves fragment files), record the impact in
-the active spec's `plan.md` under `## Domain impact (deltas)`:
+When code work outside `domain/<A>/diagrams/` also lands in the same
+operation, the diagram change is no longer a direct edit — it is
+part of the code spec, and its delta goes in the spec's
+`## Domain impact (deltas)` block:
 
 ```
 - ADDED domain/<A>/diagrams/_fragments/F-<slug>.md: <ratifies what>
-- MODIFIED domain/<A>/diagrams/<NN>-<slug>.md#diagram: slimmed to behavior-only, consumes F-<slug>
+- MODIFIED domain/<A>/diagrams/<NN>-<slug>.md#diagram: <how the new code reshapes the behavior>
 ```
 
 Skip: other areas entirely (cross-area fragments live in `_shared/`
-and are authored through a separate `_shared/` spec).
+and are referenced with the `_shared/` prefix).
 
 ---
 
