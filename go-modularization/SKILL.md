@@ -1,36 +1,57 @@
 ---
 name: go-modularization
-description: Opinionated folder/package layout for Go monorepos and single-service repos. Encodes flat hexagonal architecture (inbound adapters → interactor → domain/ports ← outbound adapters), suffix-then-folder promotion for API versions and bounded contexts, `go-pkgs/` (never `pkg/`) convention, `data_repositories/` vs `storage/` split, migrations grammar with closed verb set, and forbidden folder-name list. Consult before placing new code or restructuring. Use when asked "new Go service", "where does this file go", "promote to subfolder", "add adapter", "structure monorepo", "set up migrations", "review folder layout", "is this folder name allowed", or to create/place/rename/restructure code under `services/<service>/`, `go-pkgs/`, `internal/`, or `migrations/`. Auto-trigger on new top-level folder under `services/<service>/`, new file under `go-pkgs/` or `internal/`, new migration, cross-package refactor, or PR review touching folder layout. Do NOT trigger for non-Go projects or runtime/observability/lint config.
+description: Use when placing, naming, moving, or promoting code in a Go monorepo or single-service repo, or reviewing folder layout — even when the user doesn't say "architecture". Decides which folder a new file, adapter, migration, handler, repository, or shared package belongs in, and whether to promote a file suffix to a subfolder. Covers flat hexagonal layers (api/consumer/cli → interactor → domain/ports ← data_repositories/storage/external_services/producer), the go-pkgs (never pkg/) convention, internal/contracts and internal/kernel, migration filenames with a closed verb set, and a forbidden folder-name list. Triggers on "new Go service", "where does this file go", "promote to subfolder", "add adapter", "set up migrations", "is this folder name allowed", or any new folder under services/<service>/, file under go-pkgs/ or internal/, or new migration. Not for non-Go projects or lint/observability config.
 ---
 
 # go-modularization
 
-Opinionated folder/package layout for Go projects. Applies to monorepos (primary) and single-service repos (secondary). Agent-and-user-facing — both must consult this skill before placing new code, modularizing a feature, or doing folder-shape refactors.
+Opinionated folder/package layout for Go projects. Monorepos (primary), single-service repos (secondary). Consult before placing new code, modularizing a feature, or doing folder-shape refactors.
 
 Out of scope: observability conventions (logging, metrics, tracing), Go file-splitting style, formatting, lint, test framework, build tooling.
 
-Reference: [`references/adr-cheatsheet.md`](references/adr-cheatsheet.md).
+---
+
+## How to use this skill
+
+This file holds the routing flowcharts and the invariants that apply to **every** invocation (dependency rules, forbidden names, thresholds, Step 0). Task detail lives in `references/`. **Read the matching file BEFORE acting — the summaries in this file are for routing, not for executing:**
+
+| Your task                                                    | Read first                                                       |
+| ------------------------------------------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------- |
+| Scaffold a service or repo; place config or scripts          | [`references/scaffolding.md`](references/scaffolding.md)         |
+| Place, name, or promote source files; add/extend an adapter  | [`references/placement-rules.md`](references/placement-rules.md) |
+| Create or rename a migration                                 | [`references/migrations.md`](references/migrations.md)           |
+| Add shared code (`go-pkgs/`, `internal/kernel                | contracts/`, SDK repos)                                          | [`references/shared-code.md`](references/shared-code.md) |
+| Need a worked example, full service tree, or counter-example | [`references/layout-examples.md`](references/layout-examples.md) |
+| Verify after scaffolding or restructuring                    | run [`scripts/arch-checks.sh`](scripts/arch-checks.sh)           |
+| Explain why a rule exists                                    | [`references/adr-cheatsheet.md`](references/adr-cheatsheet.md)   |
+
+Exception — no extra read needed when the flowchart below already gives the full canonical path for a single new file and no promotion threshold is near. For anything touching 2+ files, a rename, a promotion, or a new folder: read the task file first.
+
+If a rule in this file and a reference file disagree, this file wins; report the mismatch.
 
 ---
 
 ## Step 0 — Hard rule: ask when unclear
 
-Before placing or moving code, the agent must check this skill against the case at hand. If **any** of the following is true, stop and start a discussion with the user:
+Before placing or moving code, check this skill against the case at hand. If **any** of the following is true, stop and start a discussion with the user:
 
 - No rule in this skill cleanly covers the situation.
 - Two or more rules could plausibly apply and the choice changes the layout.
-- A promotion threshold is borderline (around the ~5 / ~10 / ~3 marks).
+- A promotion threshold count is in the borderline band (within 2 below the threshold — see Counting rule below).
 - The user proposes a forbidden folder name and the canonical alternative is not obvious in context.
 - A new kind of inbound or outbound adapter is being introduced.
-- Cross-cutting code candidate: unclear whether it belongs in `go-pkgs/`, `go-pkgs/infra/`, `internal/kernel/`, `internal/contracts/`, or a shared SDK repo.
+- Cross-cutting code candidate: unclear whether it belongs in `go-pkgs/`, `go-pkgs/infra/`, `internal/kernel/`, service-scoped `services/<service>/internal/contracts/`, root `internal/contracts/`, or a shared SDK repo.
 
 Present 2–3 concrete options with trade-offs. Do **not** silently pick one. Once aligned, proceed.
+
+**Non-interactive runs** (CI, headless, no user to ask): do not block and do not silently improvise. Take the most conservative option — no new folders, no renames, no moves — proceed with it, and list every deferred decision in the final report under a "Deferred (Step 0)" heading.
 
 ---
 
 ## When to use
 
 Trigger phrases:
+
 - "new Go service" / "scaffold service folders"
 - "where does this file go" / "which folder for X"
 - "promote to subfolder" / "split this package"
@@ -40,6 +61,7 @@ Trigger phrases:
 - "refactor this into …" / "move code from … to …"
 
 Auto-trigger on:
+
 - New top-level folder under `services/<service>/`.
 - New file under `go-pkgs/`, `internal/contracts/`, `internal/kernel/`.
 - New migration file under `migrations/`.
@@ -47,90 +69,21 @@ Auto-trigger on:
 - PR diff that adds, renames, or moves a folder.
 
 Skip for:
+
 - Non-Go projects.
+- Library/framework repos (no service binary) — out of scope.
 - Runtime config: logging, metrics, tracing, lint, formatters, test frameworks (out of scope).
 
----
-
-## Placeholder convention
-
-`<placeholder>` = slot to fill. Common slots:
-
-| Slot                  | Meaning                                  | Example                                  |
-|-----------------------|------------------------------------------|------------------------------------------|
-| `<service>`           | service name                             | `orders`, `billing`                      |
-| `<inbound_adapter>`   | entry-point adapter                      | `api`, `consumer`, `cli`                 |
-| `<outbound_adapter>`  | exit-point adapter                       | `data_repositories`, `external_services`, `producer`, `storage` |
-| `<layer>`             | inner layer                              | `domain`, `interactor`, `ports`          |
-| `<context>`           | bounded context / aggregate              | `order`, `product`, `user`               |
-| `<resource>`          | API resource                             | `users`, `invoices`                      |
-| `<provider>`          | external provider                        | `taobao`, `amazon`, `s3`                 |
-| `<action>`            | verb                                     | `publish`, `consume`, `connect`          |
-| `<concern>`           | middleware concern                       | `auth`, `logging`, `ratelimit`           |
-| `<subject>`           | event domain subject                     | `order`, `product`                       |
-| `<verb>`              | past-tense event verb                    | `created`, `changed`, `completed`        |
-| `<N>`                 | version int                              | `1`, `2`                                 |
-| `<domain>`            | utility domain prefix                    | `string`, `time`, `slice`                |
-| `<pkg>`               | package name                             | `stringx`                                |
-| `<org>`               | GitHub org / owner                       | `acme`, `trypanic`                       |
+Placeholders: `<placeholder>` = slot to fill, e.g. `<service>` = `orders`, `<context>` = `order`, `<provider>` = `s3`, `<subject>_<verb>` = `order_created`. Full slot table: [`references/layout-examples.md`](references/layout-examples.md).
 
 ---
 
-## Step 1 — Pick repo shape
+## Invariant — layers and dependency direction
 
-Two shapes. Same internal service skeleton.
+Applies to every invocation; never lazy-load this.
 
-**Monorepo (primary):**
-
-```
-<repo-root>/
-  services/<service>/
-    cmd/main.go
-    internal/
-      <inbound_adapter>/         # api, consumer, cli
-      <outbound_adapter>/        # data_repositories, external_services, producer, storage
-      <layer>/                   # domain, interactor, ports
-      config/
-    scripts/                     # optional, per-service
-  go-pkgs/<pkg>/                 # shared Go utils, domain-prefixed
-  internal/
-    contracts/                   # cross-service event payloads
-    kernel/                      # shared business primitives
-  migrations/                    # see Step 8
-  infra/<technology>/            # declarative infra config (e.g. rabbit topology)
-  scripts/                       # repo-root bash/python/sql
-```
-
-**Single-service repo (secondary):**
-
-```
-<repo-root>/
-  cmd/main.go
-  internal/
-    <inbound_adapter>/
-    <outbound_adapter>/
-    <layer>/
-    config/
-  migrations/<technology>/       # service folder collapsed
-  scripts/
-```
-
-Drop `services/`, `go-pkgs/`, `internal/contracts/`, `internal/kernel/`, `migrations/<service>/` for single-service.
-
----
-
-## Step 2 — Hexagonal layers
-
-Inner layers (abstract, no IO):
-- `domain/` — entities, value objects, business invariants.
-- `interactor/` — use cases, orchestration.
-- `ports/` — interfaces consumed by interactor, implemented by adapters.
-
-Outer layers (concrete, IO):
-- Inbound adapters (entry): `api/`, `consumer/`, `cli/`.
-- Outbound adapters (exit): `data_repositories/`, `external_services/`, `producer/`, `storage/`.
-
-Dependency direction:
+Inner layers (abstract, no IO): `domain/` (entities, value objects, invariants), `interactor/` (use cases), `ports/` (interfaces consumed by interactor, implemented by adapters).
+Outer layers (concrete, IO): inbound `api/`, `consumer/`, `cli/`; outbound `data_repositories/`, `external_services/`, `producer/`, `storage/`.
 
 ```
 cmd                  → all (wiring only)
@@ -140,217 +93,85 @@ interactor           → domain, ports
 ```
 
 **Forbidden imports:**
+
 - `domain` / `ports` / `interactor` importing any adapter.
 - `services/<A>/internal` importing `services/<B>/internal`.
-- `internal/kernel/` importing `internal/contracts/`.
+- `internal/kernel/` importing `internal/contracts/`, or `internal/contracts/` importing `internal/kernel/` — wire payloads use primitive/stdlib types only.
 - `go-pkgs/` importing `internal/` or `services/`.
 - Adapter A importing adapter B directly — go through `interactor/` or shared `ports/`.
 - Anything importing `cmd/`.
 
----
-
-## Step 3 — Bounded context: suffix, then promote
-
-Default in-folder suffix:
-
-```
-interactor/
-  interactor_order.go
-  interactor_product.go
-data_repositories/
-  repository_order.go
-  repository_product.go
-```
-
-Promote to subfolder when one context hits ~10+ files in that layer:
-
-```
-interactor/
-  order/interactor.go            # context suffix dropped
-  order/<more files>.go
-  product/interactor.go
-```
-
-**Forbidden:** combined-context suffix `<contextA>_<contextB>.go` (e.g. `order_product.go`).
+**Module topology** (two co-equal shapes, pick by scale — folder/layer/dep rules identical in both): **A — single-module:** one `go.mod` at repo root. **B — multi-module workspace:** root `go.work` (no root `go.mod`) + one `go.mod` per `go-pkgs/`, `internal/`, and each `services/<service>/`; services `require` the shared modules via the workspace. Multi-module **requires** a root `go.work`; per-service `go.mod` without one (orphan modules) is forbidden.
 
 ---
 
-## Step 4 — API versioning: suffix, then promote
+## Invariant — promotion thresholds and counting rule
 
-Default file-name suffix:
+**Counting rule:** count non-test, non-generated `.go` files — exclude `_test.go`, `*.pb.go`, `*_gen.go`, and other generated output. At/above threshold → promote. Within 2 below → borderline band → Step 0. Below the band → stay flat.
 
-```
-api/
-  users_handler_v1.go
-  users_handler_v2.go
-```
+| What                       | Threshold                                                             | Promote to (suffix dropped)     |
+| -------------------------- | --------------------------------------------------------------------- | ------------------------------- |
+| Bounded context in a layer | ≥10 files                                                             | `<layer>/<context>/`            |
+| API version                | ≥5 files                                                              | `api/v<N>/`                     |
+| Middleware for one adapter | ≥4 files                                                              | `<inbound_adapter>/middleware/` |
+| External provider          | ≥10 files, or ≥3 provider-specific infra files, or distinct lifecycle | `external_services/<provider>/` |
 
-Promote when one version exceeds ~5 files:
-
-```
-api/
-  v1/users_handler.go            # version suffix dropped
-  v2/users_handler.go
-```
+Promotion updates all import sites in the same change; mechanics, breaking-change escalation, and per-service maturity rules: read [`references/placement-rules.md`](references/placement-rules.md) before promoting.
 
 ---
 
-## Step 5 — Middleware lives with its adapter
+## Gotchas
 
-Inside the adapter package:
+Concrete corrections to defaults that are wrong here. Read before acting — each defies a reasonable Go assumption:
 
-```
-api/
-  middleware_auth.go
-  middleware_logging.go
-```
+- Shared utilities go in `go-pkgs/`, **never `pkg/`**. The idiomatic-Go `pkg/` is forbidden here.
+- A monorepo picks **one of two module topologies**: single root `go.mod` (simple), **or** a root `go.work` with one `go.mod` per module (`go-pkgs/`, `internal/`, each service) for scaled repos. Per-service `go.mod` is fine **with** a `go.work`; without one it's an orphan module that breaks `internal/` sharing. The "one root `go.mod`" assumption is wrong for workspace repos.
+- One `cmd/main.go` per service. **No `cmd/server/`, `cmd/worker/`** — every subcommand lives in `cli/` as a subcommand, `cmd/` only wires.
+- Scheduled jobs and background work do **not** get a `workers/` folder: events/polling → `consumer/`, scheduled → `cli/` subcommand.
+- `data_repositories/` vs `storage/` splits **by data shape, not by SQL/NoSQL**. Redis can land in either; a Mongo blob store is `storage/`.
+- Migration verbs are a **closed set** (`create add drop alter rename backfill fix refactor seed`). `update`, `misc`, `change` are rejected — pick the closest allowed verb.
+- `domain/` files use the **bare context name** (`order.go`), no `domain_` prefix — unlike every other layer, which prefixes (`interactor_`, `repository_`).
+- Promoting a suffix to a subfolder **drops the suffix** (`interactor_order.go` → `order/interactor.go`), and you must update every import site in the same change.
+- Thresholds are not "promote ASAP": below the band, **stay flat**; in the borderline band, **Step 0**. Promotion is a one-way ratchet.
 
-Promote when 4+ middleware files for one adapter:
+## Decision flowcharts
 
-```
-api/
-  middleware/
-    auth.go                      # concern suffix dropped
-    logging.go
-```
+### Where does a new file go?
 
-**No top-level `middleware/` folder.**
+1. Is it a CLI subcommand? → `cli/<action>_command.go`.
+2. Is it an HTTP handler? → `api/<resource>_handler_v<N>.go`. (`api/` is HTTP only; gRPC/GraphQL/WebSocket = new adapter kind → Step 0.)
+3. Is it an event/poll handler? → `consumer/<subject>_<verb>_consumer.go`.
+4. Is it a use case? → `interactor/interactor_<context>.go`.
+5. Is it an entity, value object, or business invariant? → `domain/<context>.go` (bare context name, no `domain_` prefix).
+6. Is it a repository (schema-shaped: query language, typed fields, indexes)? → `data_repositories/repository_<context>.go`.
+7. Is it blob storage (opaque bytes by key/path)? → `storage/storage_<context>.go`.
+8. Is it a third-party API call? → `external_services/<subject>_<action>_<provider>.go`.
+9. Is it an outbound event? → `producer/<subject>_<verb>_producer.go`.
+10. Is it a port interface? → `ports/<context>_port.go`.
+11. Is it middleware? → `<inbound_adapter>/middleware_<concern>.go`.
 
----
+If none clearly apply → Step 0. Naming detail, context identification, edge cases (Redis split, background work routing, tests/mocks): [`references/placement-rules.md`](references/placement-rules.md).
 
-## Step 6 — Outbound adapter rules
+### Shared code: which destination?
 
-| Adapter             | Shape                                  | File form (flat)                               | Promotion                                              |
-|---------------------|----------------------------------------|------------------------------------------------|--------------------------------------------------------|
-| `data_repositories/`| schema-shaped (PG, Mongo, Redis, ES)   | `repository_<context>.go`                      | per-context subfolder at ~10+ files                    |
-| `storage/`          | blob-shaped (S3, GCS, local FS)        | `storage_<context>.go`                         | per-context subfolder                                  |
-| `external_services/`| third-party APIs                       | `<subject>_<action>_<provider>.go`             | `external_services/<provider>/` at ~10+ files, 3+ provider-specific infra files, or distinct lifecycle — drop provider from filenames inside |
-| `producer/`         | outbound events                        | `<subject>_<verb>_producer.go`                 | per-context subfolder                                  |
+- Pure stdlib helper, no business meaning → `go-pkgs/<domain>x/` or `go-pkgs/<domain>kit/`.
+- Reusable infra → `go-pkgs/infra/<pkg>/` (default; SDK repos are opt-in tiers).
+- Business primitive, 2+ services, stable → `internal/kernel/`.
+- Wire payload shared by 2+ services → root `internal/contracts/`.
+- Contract shared across components of one service → `services/<service>/internal/contracts/` (single-service: `internal/contracts/`); private to that service.
+- DTO used by one adapter only → keep local to that adapter package.
 
-`data_repositories/` vs `storage/` split is **by data shape**, not SQL/NoSQL or in-memory/persisted.
+Contract scope is a ladder (adapter-local → service-scoped → root); promote only when a real consumer crosses the next boundary. Read [`references/shared-code.md`](references/shared-code.md) before creating anything under `go-pkgs/` or root `internal/`.
 
----
+### Migration filename?
 
-## Step 7 — Inbound adapter rules
+Shared DB → `<seq>_<service|shared>_<verb>_<desc>`; per-service DB → `<seq>_<verb>_<desc>`. Verb closed set: `create|add|drop|alter|rename|backfill|fix|refactor|seed`. SQL → `.up.sql` + `.down.sql` pair; forward-only → single native ext.
 
-| Adapter      | Files                                | Notes                                                |
-|--------------|--------------------------------------|------------------------------------------------------|
-| `api/`       | `<resource>_handler_v<N>.go`         | promote to `api/v<N>/` at ~5+ files                  |
-| `consumer/`  | `<subject>_<verb>_consumer.go`       | events + polling go here                             |
-| `cli/`       | `<action>_command.go`                | Cobra subcommands, parallel to `api/`/`consumer/`    |
-
-**Single binary per service**: `cmd/main.go` only. All subcommands (server, scheduled jobs, one-off tasks, Go-runtime migrations) are Cobra subcommands inside `cli/`. `cmd/` is wiring only.
-
-**Background work routing**: events → `consumer/`. Scheduled → Cobra subcommand under `cli/`, triggered externally. Polling → `consumer/`. **No `workers/` folder.**
-
----
-
-## Step 8 — Migrations
-
-Pick layout by DB topology. Mixing within one DB instance is **forbidden**.
-
-**Shared DB (sequence global per technology):**
-
-```
-migrations/<technology>/<seq>_<service|shared>_<verb>_<desc>.<up|down>.sql
-migrations/<technology>/<seq>_<service|shared>_<verb>_<desc>.<ext>     # forward-only (e.g. mongo .js)
-```
-
-Examples:
-```
-migrations/postgres/001_shared_create_auto_set_updated_at.up.sql
-migrations/postgres/001_shared_create_auto_set_updated_at.down.sql
-migrations/postgres/002_taobao_create_orders_table.up.sql
-migrations/mongo/003_amazon_scraping_collections.js
-```
-
-**Per-service DB (sequence per service per technology):**
-
-```
-migrations/<service>/<technology>/<seq>_<verb>_<desc>.<up|down>.sql    # monorepo
-migrations/<technology>/<seq>_<verb>_<desc>.<up|down>.sql              # single-service
-```
-
-Examples:
-```
-migrations/orders/postgres/001_create_orders_table.up.sql
-migrations/orders/mongo/003_scraping_collections.js
-```
-
-**Filename grammar:**
-
-| Slot       | Rule                                                                            |
-|------------|---------------------------------------------------------------------------------|
-| `<seq>`    | zero-padded int (`001`, `002`)                                                  |
-| `<service>`| shared layout only; owner of service-scoped migration                           |
-| `shared`   | reserved literal for cross-cutting migration in shared layout; never combine with service name |
-| `<verb>`   | **closed set**: `create`, `add`, `drop`, `alter`, `rename`, `backfill`, `fix`, `refactor`, `seed` |
-| `<desc>`   | snake_case noun phrase                                                          |
-| `<up\|down>`| required for SQL; forbidden for forward-only                                   |
-| `<ext>`    | `.sql` or native (e.g. `.js` for Mongo)                                         |
-
-**Forbidden:**
-- Free-form verbs (`_misc`, `_stuff`, bare `_update`).
-- Combining `shared` token with a service name (`001_shared_taobao_...`).
-- Verb as suffix or dotted segment (`_lock_fix`, `.fix.down.sql`).
-- Multiple verbs in one filename.
-- Migrations under `data_repositories/` or `services/<service>/`.
-- Cross-service writes in shared DB (use `shared` token only for genuinely cross-cutting changes).
-
-**Declarative infra config is not a migration.** RabbitMQ topology and similar live at `infra/<technology>/` (e.g. `infra/rabbit/topology.json`).
-
-Sequence collisions resolved at PR/rebase time. No reservation system.
+Read [`references/migrations.md`](references/migrations.md) before creating or renaming any migration file.
 
 ---
 
-## Step 9 — Shared code: `go-pkgs/` and `internal/`
-
-`go-pkgs/` (monorepo, never `pkg/`):
-- Generic, reusable Go utilities, domain-organized.
-- One subfolder per package: `go-pkgs/<pkg>/<action>.go`.
-- Package form: `<domain>x` or `<domain>kit` (`stringx`, `timex`, `mathx`, `randx`, `slicex`, `errorkit`, `urlkit`).
-- File form: `<action>.go` (`publish.go`, `parse.go`, `format.go`).
-- Stdlib-only ideal. No business logic. No IO.
-- Must never contain business types, service config shapes, or imports from `services/...` or root `internal/`.
-
-**Reusable infrastructure** (DB clients, HTTP servers/clients, brokers, observability, blob, migration runners) — placement precedence:
-
-1. **Primary: `go-pkgs/infra/<pkg>/`.** Default placement. Keeps the infra code in-repo, shareable across services in this monorepo, and avoids premature extraction.
-2. **Secondary: contribute to an existing community SDK repo** if one already covers the concern (e.g. `github.com/trypanic/go-sdk`). Use this when the piece is generic enough to benefit other consumers.
-3. **Tertiary: create a dedicated org-owned SDK repo** (`github.com/<org>/go-sdk` or similar) when the infra surface is large enough to justify its own release lifecycle, versioning, and CI. Consume via `go.mod`. The SDK repo never imports from this repo.
-
-No one is forced to use any particular SDK repo. The default for new infra is always `go-pkgs/infra/`.
-
-`internal/` (monorepo root, two folders only):
-- `internal/contracts/` — cross-service event/message wire payloads. File form: `<subject>_<verb>_event.go` (e.g. `product_changed_event.go`).
-- `internal/kernel/` — shared business primitives (`Money`, IDs, value objects). Promote here only when 2+ services already consume the type, the contract is stable, and changes are rare.
-
-Forbidden names for cross-service shared payloads: `internal/messages/`, `internal/events/`, `internal/dto/`.
-
----
-
-## Step 10 — Config
-
-Per-service only:
-- Monorepo: `services/<service>/config/` or `services/<service>/internal/config/`.
-- Single-service: `internal/config/`.
-
-**No monorepo-root `config/` folder.**
-
----
-
-## Step 11 — Scripts
-
-`scripts/` holds **bash, Python, SQL only**. Never Go.
-
-- Monorepo: `scripts/` at root + optional `services/<service>/scripts/`.
-- Single-service: `scripts/` at root.
-
-Go-runtime tasks → Cobra subcommand under `cli/`.
-
----
-
-## Forbidden folder names
+## Invariant — forbidden folder names
 
 Reject these names anywhere in the repo:
 
@@ -359,56 +180,7 @@ pkg, shared, common, lib, utils, application, infrastructure,
 interfaces, helpers, mapper, dto, gateway, workers, misc
 ```
 
-If user proposes one, push back, cite the rule, suggest the canonical alternative (e.g. `pkg` → `go-pkgs/<domain>x`, `workers` → `consumer/` + `cli/`, `utils` → domain-prefixed package under `go-pkgs/`). If none of the alternatives clearly fit, fall back to Step 0 and discuss with the user.
-
----
-
-## Decision flowcharts
-
-### Where does a new file go?
-
-1. Is it a Cobra subcommand? → `cli/<action>_command.go`.
-2. Is it an HTTP handler? → `api/<resource>_handler_v<N>.go`.
-3. Is it an event/poll handler? → `consumer/<subject>_<verb>_consumer.go`.
-4. Is it a use case? → `interactor/interactor_<context>.go`.
-5. Is it a repository (schema-shaped DB)? → `data_repositories/repository_<context>.go`.
-6. Is it blob storage? → `storage/storage_<context>.go`.
-7. Is it a third-party API call? → `external_services/<subject>_<action>_<provider>.go`.
-8. Is it an outbound event? → `producer/<subject>_<verb>_producer.go`.
-9. Is it a port interface? → `ports/<context>_port.go`.
-10. Is it middleware? → `<inbound_adapter>/middleware_<concern>.go`.
-
-If none of the above clearly apply → Step 0 (ask the user).
-
-### Promote to subfolder?
-
-- Bounded context in a layer ≥ ~10 files → `<layer>/<context>/`.
-- API version ≥ ~5 files → `api/v<N>/`.
-- Middleware ≥ 4 files for one adapter → `<inbound_adapter>/middleware/`.
-- External provider ≥ ~10 files, ≥ 3 provider-specific infra files, or distinct lifecycle → `external_services/<provider>/`.
-
-When promoted, **drop the suffix that the folder now encodes**. Borderline counts → Step 0.
-
-### Shared infrastructure: which destination?
-
-1. `go-pkgs/infra/<pkg>/` — default for any reusable infra inside this repo.
-2. Contribute to an existing community SDK repo (e.g. `github.com/trypanic/go-sdk`) — when the concern is already covered there and the user is willing to upstream.
-3. Dedicated org SDK repo (`github.com/<org>/go-sdk` or named alternative) — only when the surface justifies its own release lifecycle.
-
-If unclear which tier applies → Step 0.
-
-### Shared utility: `go-pkgs/<domain>x/` or `internal/kernel/`?
-
-- Pure stdlib helper, no business meaning → `go-pkgs/<domain>x/`.
-- Business primitive shared by 2+ services, stable contract → `internal/kernel/`.
-- One service only → keep it in that service's `internal/`.
-
-### Migration filename?
-
-1. Pick layout: shared DB → `<seq>_<service|shared>_<verb>_<desc>`. Per-service DB → `<seq>_<verb>_<desc>`.
-2. Verb must be in closed set: `create|add|drop|alter|rename|backfill|fix|refactor|seed`.
-3. SQL → `.up.sql` + `.down.sql`. Forward-only (Mongo) → single file, native ext.
-4. Sequence is per-technology in shared layout, per-service-per-technology otherwise.
+If user proposes one, push back, cite the rule, suggest the canonical alternative (`pkg` → `go-pkgs/<domain>x`, `workers` → `consumer/` + `cli/`, `utils` → domain-prefixed package under `go-pkgs/`). If none clearly fits → Step 0.
 
 ---
 
@@ -417,40 +189,33 @@ If unclear which tier applies → Step 0.
 When generating or reviewing layout, reject:
 
 - Top-level `pkg/`, `shared/`, `common/`, `lib/`, `utils/`, `helpers/`, `mapper/`, `dto/`, `gateway/`, `workers/`, `application/`, `infrastructure/`, `interfaces/`, `misc/`.
-- `domain` / `ports` / `interactor` importing an adapter.
-- One service's `internal/` importing another service's `internal/`.
-- `internal/kernel/` importing `internal/contracts/`.
-- `go-pkgs/` importing `services/...` or root `internal/`.
-- Cross-adapter direct import (adapter A → adapter B).
-- Anything importing `cmd/`.
+- Any forbidden import from the dependency invariant above.
 - Combined-context filename (`order_product.go`).
-- Migration verb outside the closed set.
-- `001_shared_<service>_...` (shared + service combined).
-- Verb as filename suffix or dotted segment.
-- Migrations under `data_repositories/` or `services/<service>/`.
-- Cross-service writes in shared DB without the `shared` token justification.
-- Multi-binary services (more than one `main.go` per service).
-- `cmd/` containing logic instead of wiring.
+- Migration verb outside the closed set; `shared` + service combined; verb as suffix or dotted segment; migrations under `data_repositories/` or `services/<service>/`; cross-service writes in shared DB without `shared`-token justification.
+- Multi-binary services (more than one `main.go` per service); `cmd/` containing logic instead of wiring.
+- Per-service `go.mod` in a monorepo **without** a root `go.work` (orphan modules). With a `go.work`, multi-module is allowed (topology B).
 - Top-level `config/`, `middleware/`, `events/`, `messages/`, `dto/`.
 - Go files under `scripts/`.
 - Forcing infra into a remote SDK repo when `go-pkgs/infra/` is the better default.
 
-Cite the rule when refusing. Offer the canonical alternative. If none fits cleanly, fall back to Step 0.
+Cite the rule when refusing. Offer the canonical alternative. If none fits cleanly → Step 0.
 
 ---
 
 ## Verify
 
-After scaffolding or restructuring:
+After scaffolding or restructuring, run [`scripts/arch-checks.sh`](scripts/arch-checks.sh) from the repo root (`bash scripts/arch-checks.sh`; add `--json` for machine-readable output, `--help` for usage). It checks: forbidden folder names (vendor/.git pruned), `go build` + `go vet`, the eight import invariants via `go list`, module topology (single root `go.mod`, or a `go.work` with every `go.mod` dir listed under `use`; orphan multi-module flagged), one `cmd/main.go` per service, no Go under `scripts/`, migration filename grammar + up/down pairing, and promotion-threshold counts. Structured report on stdout, diagnostics on stderr; exit 0 = clean, 1 = violations, 2 = bad usage, 3 = missing prerequisite. If the script is unavailable, the per-check commands are inside it — run them manually.
 
-1. `find . -type d \( -name pkg -o -name shared -o -name common -o -name lib -o -name utils -o -name helpers -o -name mapper -o -name dto -o -name gateway -o -name workers -o -name misc -o -name application -o -name infrastructure -o -name interfaces \)` — must return empty.
-2. `go build ./...` — imports resolve.
-3. `go vet ./...`.
-4. Spot-check dependency direction: grep `domain/`, `ports/`, `interactor/` for adapter imports.
-5. Verify single `cmd/main.go` per service; `cmd/` only wires.
-6. Validate migration filenames against the grammar (verb in closed set, no combined service+shared, correct up/down pairing for SQL).
+Then report using this template (omit empty sections):
 
-Report: list of folders created/renamed, list of files placed, any forbidden name detected, any promotion threshold reached, any case escalated to the user via Step 0.
+```
+## go-modularization result
+- Created/renamed: <folder or file paths>
+- Placed: <file → path, one per line>
+- Violations: <path: rule cited → canonical fix>   (none if clean)
+- Promotion reached: <layer/context: count ≥ threshold>
+- Deferred (Step 0): <decision + the 2–3 options>   (required heading in non-interactive runs)
+```
 
 ---
 
@@ -458,12 +223,11 @@ Report: list of folders created/renamed, list of files placed, any forbidden nam
 
 Optional argument:
 
-- **No argument** — interactive: ask repo shape (mono/single), service name, then scaffold the canonical skeleton.
-- **`monorepo <service>`** — scaffold a service inside a monorepo at `services/<service>/`.
-- **`single <module>`** — scaffold a single-service repo at root.
-- **`review`** — audit current layout; report violations and promotion thresholds reached.
-- **`place <description>`** — given a file description, return the canonical path. If unclear, escalate via Step 0.
-- **`migration <topology> <verb> <desc>`** — generate a migration filename. `<topology>` ∈ {`shared`, `per-service`}.
+- **No argument** — interactive: ask repo shape (mono/single), service name, then scaffold. Read [`references/scaffolding.md`](references/scaffolding.md) first.
+- **`monorepo <service>`** / **`single <module>`** — scaffold (need-based: only `cmd/`, `domain/`, `interactor/`, `ports/`, `config/` + named adapters — never empty folders). Read [`references/scaffolding.md`](references/scaffolding.md) first.
+- **`review`** — first detect adoption: adopted iff service `internal/` contains ≥2 of `domain/`, `interactor/`, `ports/` (or single-service equivalent). Not adopted → report "convention not adopted", ask whether to adopt; do **not** flag individual violations or restructure. Adopted → audit and emit the report template from the Verify section (Violations + Promotion reached sections).
+- **`place <description>`** — return the canonical path via the flowchart; read [`references/placement-rules.md`](references/placement-rules.md) when the flowchart line alone doesn't settle it. Unclear → Step 0.
+- **`migration <topology> <verb> <desc>`** — generate a migration filename; `<topology>` ∈ {`shared`, `per-service`}. Read [`references/migrations.md`](references/migrations.md) first.
 
 ---
 
@@ -473,3 +237,4 @@ Optional argument:
 - Do not enforce observability, lint, formatter, or test framework — out of scope.
 - When promotion threshold is borderline, prefer not promoting; promotion is a one-way ratchet that adds folders.
 - Do not force the use of any specific external SDK repo. `go-pkgs/infra/` is the default; remote SDK repos are opt-in.
+- Violations noticed during an unrelated task: report them; do not fix them in the same change unless asked.

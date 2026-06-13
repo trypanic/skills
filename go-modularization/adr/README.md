@@ -83,10 +83,10 @@ Reusable infrastructure (database clients, HTTP servers and clients, message bro
 
 Cross-service business sharing lives in monorepo-root `internal/`, with two folders only:
 
-- `internal/contracts/` — cross-service event/message wire payloads.
+- `internal/contracts/` — **cross-service** event/message wire payloads (shared across 2+ services). Service-private contracts do not live here — see ADR-21.
 - `internal/kernel/` — shared business primitives (e.g. `Money`, IDs, common value objects).
 
-Admission criteria for `internal/kernel/`, all required: 2+ services already consume it; stable contract (changes are rare); no service-specific logic.
+Admission criteria for `internal/kernel/`, all required: 2+ services already consume it; stable contract (changes are rare); no service-specific logic. The kernel is cross-service by definition and has no per-service tier — unlike contracts (ADR-21).
 
 ## ADR-10: `go-pkgs/` uses one subfolder per package with action-based file names
 
@@ -98,7 +98,7 @@ Each package under `go-pkgs/` (and `go-pkgs/infra/` when used) gets a dedicated 
 
 ## ADR-11: Cross-service event payloads live in `internal/contracts/`
 
-The folder under monorepo `internal/` that holds shared event/message wire payloads is named `internal/contracts/`. One file per event or message contract.
+The monorepo-root folder that holds **cross-service** event/message wire payloads (shared across 2+ services) is named `internal/contracts/`. One file per event or message contract. Contracts shared only within a single service live in that service's own contracts folder — see ADR-21.
 
 - File form: `<subject>_<verb>_event.go` (e.g. `product_changed_event.go`, `order_completed_event.go`).
 - The names `internal/messages/`, `internal/events/`, `internal/dto/` are not used.
@@ -233,7 +233,43 @@ There is no `workers/` folder. The name `workers` is forbidden.
 - Monorepo: `scripts/` at the root, plus optional per-service `services/<service>/scripts/`.
 - Single-service repo: `scripts/` at root.
 
+## ADR-21: Contracts are scoped; service-private contracts live per-service, cross-service contracts at root
 
+Refines ADR-09 and ADR-11. A contract/DTO type is placed by its **sharing scope**, not by being a DTO. Three tiers, with a one-way promotion ladder:
+
+1. **Adapter-local** — a request/response or mapping struct used by exactly one adapter → stays in that adapter package. No shared folder. (This is the "local to adapter" half of the `dto/` ban.)
+2. **Service-scoped** — a contract shared across 2+ components *within one service* (e.g. an interactor and two of its adapters) → `services/<service>/internal/contracts/` (monorepo) or `internal/contracts/` (single-service repo). Package `contracts`. Each service declares its own; a service-scoped contract is **private to its owning service** — service B must never import service A's contracts (reinforced by the cross-service import ban, ADR-09 dependency rules).
+3. **Cross-service** — a wire payload shared across 2+ services → monorepo-root `internal/contracts/` (ADR-11). Monorepo only; collapses in single-service repos. At scale, namespace by the **producing** service: `internal/contracts/<service>/` (e.g. `internal/contracts/orchestrator/`, `internal/contracts/worker/`) — one subfolder per service whose API/events the contracts describe.
+
+Promotion ladder: adapter-local → service-scoped → root. Promote only on a real consumer crossing the next boundary, never speculatively. A struct does not move to root `internal/contracts/` until a *second service* consumes it.
+
+Constraints on service-scoped contracts (same as root contracts): primitive/stdlib field types; no imports from `domain/`, `interactor/`, adapters, or `internal/kernel/`. They are transfer shapes, not business types.
+
+Naming collision: both the service-scoped folder and root `internal/contracts/` use package name `contracts`. When a single file imports both, alias by scope (e.g. `import ordersc ".../services/orders/internal/contracts"` and `import contracts ".../internal/contracts"`).
+
+Single-service mapping: with no `services/` wrapper and only one service, the cross-service tier vanishes; `internal/contracts/` carries the service-scoped meaning. ADR-06's "collapse root-level `internal/contracts/`" refers to the cross-service tier disappearing, not the folder.
+
+Kernel is unaffected: `internal/kernel/` is cross-service by its admission criteria (2+ consuming services) and has no per-service tier.
+
+## ADR-22: Module topology — single-module or multi-module workspace
+
+A monorepo uses one of two module topologies. Both are first-class; pick by scale. Folder layout, layer rules, and dependency direction are **identical** across both — topology governs `go.mod`/`go.work` only, not where files go.
+
+**A — single-module.** One `go.mod` at the repo root; the whole repo is one Go module. `internal/`, `go-pkgs/`, and services are plain packages. Simplest; the default for small monorepos and for all single-service repos.
+
+**B — multi-module workspace.** A `go.work` at the repo root (no root `go.mod`), with one `go.mod` per shareable unit:
+
+- `go-pkgs/go.mod`
+- `internal/go.mod` — the shared cross-service module (`contracts/`, `kernel/`, and any other root-`internal/` shared packages).
+- `services/<service>/go.mod` — one per service.
+
+`go.work` lists every module under `use (...)`; each service module `require`s the `internal/` and `go-pkgs/` module paths, resolved locally through the workspace (no intra-repo version publishing). Best for scaled monorepos: per-service dependency sets, independent build/test, smaller change blast radius.
+
+**Required when multi-module:** a root `go.work` tying the modules. Per-service `go.mod` files **without** a `go.work` (orphan modules) are forbidden — they break local sharing of `internal/`/`go-pkgs/` and force version publishing inside one repo.
+
+**Invariant unchanged by topology:** the dependency-direction rules hold in both. Under B they manifest as cross-module `require`s — a service module requires the `internal/` module; the `internal/` module never requires a service module.
+
+Single-service repos use topology A (one service, one module); the multi-module split has nothing to separate.
 
 ---
 
@@ -243,19 +279,22 @@ There is no `workers/` folder. The name `workers` is forbidden.
 
 ```
 cmd                                    → all (wiring only)
-<inbound_adapter>                      → interactor
+<inbound_adapter>                      → interactor, internal/contracts (service-scoped)
   e.g. api / consumer / cli
-interactor                             → domain, ports
-<outbound_adapter>                     → ports, domain
+interactor                             → domain, ports, internal/contracts (service-scoped)
+<outbound_adapter>                     → ports, domain, internal/contracts (service-scoped)
   e.g. external_services /
        data_repositories /
        producer / storage
+services/<service>/internal/contracts  → go-pkgs (primitive/stdlib only)
 ```
 
 ### Monorepo-level
 
 ```
-services/<service>/internal  → internal/contracts, internal/kernel, go-pkgs, external SDK (if used)
+services/<service>/internal  → services/<service>/internal/contracts (service-scoped),
+                               internal/contracts (cross-service), internal/kernel,
+                               go-pkgs, external SDK (if used)
 internal/contracts           → internal/kernel, go-pkgs
 internal/kernel              → go-pkgs
 go-pkgs                      → (stdlib only; ideally no third-party)
@@ -266,7 +305,8 @@ external SDK repo            → (stdlib and third-party; never imports from thi
 ### Disallowed
 
 - `<layer>` (`domain`, `ports`, `interactor`) importing any adapter folder.
-- One service's `internal/` importing another service's `internal/` — i.e. `services/<A>/internal` ⇸ `services/<B>/internal`.
+- One service's `internal/` importing another service's `internal/` — i.e. `services/<A>/internal` ⇸ `services/<B>/internal`. This includes service A importing service B's service-scoped `internal/contracts/`; genuinely shared contracts must be promoted to root `internal/contracts/` (ADR-21).
+- Service-scoped `internal/contracts/` importing `domain/`, `interactor/`, any adapter, or `internal/kernel/` — transfer shapes use primitive/stdlib types only.
 - `internal/kernel/` importing `internal/contracts/`.
 - `go-pkgs/` importing anything from `internal/` or `services/`.
 - An external SDK repo importing anything from this repo.

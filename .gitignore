@@ -3,3 +3,4 @@ logs/
 trash/
 .*/skills/*
 !.*/skills/.skillshare-manifest.json
+.obsidian

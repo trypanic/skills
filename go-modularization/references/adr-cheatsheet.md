@@ -4,54 +4,56 @@ based on [ADR](../adr/README.md)
 
 One-line summary per rule.
 
-| Rule | Topic                                              | Summary                                                                                       |
-|------|----------------------------------------------------|-----------------------------------------------------------------------------------------------|
-| R-01 | Architecture                                       | Pragmatic flat hexagonal. Inner layers (`domain`, `interactor`, `ports`) abstract; outer adapters concrete. |
-| R-02 | Scope                                              | Folder layout + file placement only. Out: observability, file-splitting, format, lint, tests, build. |
-| R-03 | Middleware                                         | Lives in adapter package. `<inbound>/middleware_<concern>.go`. Promote to `<inbound>/middleware/` at 4+. No top-level `middleware/`. |
-| R-04 | API versioning                                     | Suffix `<resource>_handler_v<N>.go`. Promote to `api/v<N>/` at ~5+ files; drop suffix inside.  |
-| R-05 | Bounded context                                    | Suffix `<layer>_<context>.go`. Promote to `<layer>/<context>/` at ~10+. No combined `<A>_<B>.go`. |
-| R-06 | Repo shape                                         | Monorepo primary. Single-service uses same skeleton; collapse `services/`, `go-pkgs/`, `internal/`, `migrations/<service>/`. |
-| R-07 | Shared Go folder name                              | `go-pkgs/`, never `pkg/`. Pattern `<lang>-pkgs/`.                                              |
-| R-08 | `go-pkgs/` content                                 | Generic stdlib utilities, `<domain>x` / `<domain>kit`. Reusable infra → `go-pkgs/infra/<pkg>/` (primary), contribute to existing community SDK (secondary), or dedicated `<org>/go-sdk` repo (tertiary). |
-| R-09 | Cross-service business code                        | `internal/contracts/` + `internal/kernel/` only. Kernel admission: 2+ consumers, stable contract, rare changes. |
-| R-10 | `go-pkgs/` files                                   | One subfolder per package. Files `<action>.go`. No `_<provider>` suffix.                       |
-| R-11 | Cross-service event payloads                       | `internal/contracts/<subject>_<verb>_event.go`. Not `messages/`/`events/`/`dto/`.              |
-| R-12 | Migrations location                                | Repo root `migrations/`. Shared DB: `migrations/<technology>/`. Per-service: `migrations/<service>/<technology>/` (mono) or `migrations/<technology>/` (single). |
-| R-13 | Config                                             | Per-service. `services/<service>/config/` or `services/<service>/internal/config/`. No root `config/`. |
-| R-14 | Single binary                                      | One `cmd/main.go` per service. All subcommands as Cobra under `cli/`.                          |
-| R-15 | `cli/`                                             | Inbound adapter parallel to `api/`/`consumer/`. `<action>_command.go`. Logic delegates to `interactor/`. |
-| R-16 | `data_repositories/` vs `storage/`                 | Schema-shaped vs blob-shaped. Not SQL/NoSQL. Not in-memory/persisted.                          |
-| R-17 | `external_services/<provider>/`                    | Flat default `<subject>_<action>_<provider>.go`. Promote at ~10+ files / 3+ infra files / distinct lifecycle. Drop provider in filenames inside. |
-| R-18 | Background work                                    | Events → `consumer/`. Scheduled → `cli/` Cobra subcommand + external scheduler. Polling → `consumer/`. No `workers/`. |
-| R-19 | `scripts/`                                         | bash/python/sql only. Never Go. Go-runtime tasks → `cli/`.                                     |
-| R-20 | Migration filename grammar                         | Closed verb set: `create|add|drop|alter|rename|backfill|fix|refactor|seed`. Shared layout: `<seq>_<service\|shared>_<verb>_<desc>.<up\|down>.sql`. Per-service: `<seq>_<verb>_<desc>.<up\|down>.sql`. |
+| Rule | Topic                              | Summary                                                                                                                                                                                                                                                                                                             |
+| ---- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R-01 | Architecture                       | Pragmatic flat hexagonal. Inner layers (`domain`, `interactor`, `ports`) abstract; outer adapters concrete.                                                                                                                                                                                                         |
+| R-02 | Scope                              | Folder layout + file placement only. Out: observability, file-splitting, format, lint, tests, build.                                                                                                                                                                                                                |
+| R-03 | Middleware                         | Lives in adapter package. `<inbound>/middleware_<concern>.go`. Promote to `<inbound>/middleware/` at 4+. No top-level `middleware/`.                                                                                                                                                                                |
+| R-04 | API versioning                     | Suffix `<resource>_handler_v<N>.go`. Promote to `api/v<N>/` at ~5+ files; drop suffix inside.                                                                                                                                                                                                                       |
+| R-05 | Bounded context                    | Suffix `<layer>_<context>.go`. Promote to `<layer>/<context>/` at ~10+. No combined `<A>_<B>.go`.                                                                                                                                                                                                                   |
+| R-06 | Repo shape                         | Monorepo primary. Single-service uses same skeleton; collapse `services/`, `go-pkgs/`, `internal/`, `migrations/<service>/`.                                                                                                                                                                                        |
+| R-07 | Shared Go folder name              | `go-pkgs/`, never `pkg/`. Pattern `<lang>-pkgs/`.                                                                                                                                                                                                                                                                   |
+| R-08 | `go-pkgs/` content                 | Generic stdlib utilities, `<domain>x` / `<domain>kit`. Reusable infra → `go-pkgs/infra/<pkg>/` (primary), contribute to existing community SDK (secondary), or dedicated `<org>/go-sdk` repo (tertiary).                                                                                                            |
+| R-09 | Cross-service business code        | Root `internal/contracts/` (cross-service only) + `internal/kernel/`. Kernel admission: 2+ consumers, stable contract, rare changes; kernel root-only, no per-service tier.                                                                                                                                         |
+| R-10 | `go-pkgs/` files                   | One subfolder per package. Files `<action>.go`. No `_<provider>` suffix.                                                                                                                                                                                                                                            |
+| R-11 | Cross-service event payloads       | Root `internal/contracts/<subject>_<verb>_event.go`. Not `messages/`/`events/`/`dto/`.                                                                                                                                                                                                                              |
+| R-12 | Migrations location                | Repo root `migrations/`. Shared DB: `migrations/<technology>/`. Per-service: `migrations/<service>/<technology>/` (mono) or `migrations/<technology>/` (single).                                                                                                                                                    |
+| R-13 | Config                             | Per-service. `services/<service>/config/` or `services/<service>/internal/config/`. No root `config/`.                                                                                                                                                                                                              |
+| R-14 | Single binary                      | One `cmd/main.go` per service. All subcommands as Cobra under `cli/`.                                                                                                                                                                                                                                               |
+| R-15 | `cli/`                             | Inbound adapter parallel to `api/`/`consumer/`. `<action>_command.go`. Logic delegates to `interactor/`.                                                                                                                                                                                                            |
+| R-16 | `data_repositories/` vs `storage/` | Schema-shaped vs blob-shaped. Not SQL/NoSQL. Not in-memory/persisted.                                                                                                                                                                                                                                               |
+| R-17 | `external_services/<provider>/`    | Flat default `<subject>_<action>_<provider>.go`. Promote at ~10+ files / 3+ infra files / distinct lifecycle. Drop provider in filenames inside.                                                                                                                                                                    |
+| R-18 | Background work                    | Events → `consumer/`. Scheduled → `cli/` Cobra subcommand + external scheduler. Polling → `consumer/`. No `workers/`.                                                                                                                                                                                               |
+| R-19 | `scripts/`                         | bash/python/sql only. Never Go. Go-runtime tasks → `cli/`.                                                                                                                                                                                                                                                          |
+| R-20 | Migration filename grammar         | Closed verb set: `create \| add \| drop \| alter \| rename \| backfill \| fix \| refactor \| seed`. Shared layout:`<seq>_<service\|shared>_<verb>_<desc>.<up\|down>.sql`. Per-service:`<seq>_<verb>_<desc>.<up\|down>.sql`.                                                                                         |
+| R-21 | Contract scope                     | 3 tiers by sharing scope. 1 adapter → adapter-local. 2+ components in one service → `services/<service>/internal/contracts/` (single: `internal/contracts/`), service-private. 2+ services → root `internal/contracts/` (at scale namespace by producer: `internal/contracts/<service>/`). Ladder: local→service→root. Primitive/stdlib types only; no domain/kernel/adapter imports. |
+| R-22 | Module topology                    | Two co-equal shapes, pick by scale. A — single-module: one root `go.mod`. B — multi-module workspace: root `go.work` (no root `go.mod`) + one `go.mod` per `go-pkgs/`, `internal/`, each `services/<service>/`; services `require` the shared modules. Multi-module **requires** `go.work`; orphan per-service `go.mod` (no workspace) forbidden. Folder/layer/dep rules identical in both. |
 
 ---
 
 ## Forbidden folder names
 
-```
+```text
 pkg, shared, common, lib, utils, application, infrastructure,
 interfaces, helpers, mapper, dto, gateway, workers, misc
 ```
 
 Canonical alternatives:
 
-| Forbidden          | Use instead                                                          |
-|--------------------|----------------------------------------------------------------------|
-| `pkg/`             | `go-pkgs/<domain>x/`                                                 |
-| `shared/`          | `internal/kernel/` (business) or `go-pkgs/<domain>x/` (utility)      |
-| `common/`/`lib/`   | `go-pkgs/<domain>x/`                                                 |
-| `utils/`/`helpers/`| domain-prefixed `go-pkgs/<domain>x/`                                 |
-| `application/`     | `interactor/`                                                        |
-| `infrastructure/`  | the relevant outbound adapter (`data_repositories/`, `storage/`, …) |
-| `interfaces/`      | `ports/`                                                             |
-| `mapper/`          | inline in adapter that owns the mapping                              |
-| `dto/`             | `internal/contracts/` (cross-service) or local to adapter            |
-| `gateway/`         | `external_services/<provider>/` or `api/`                            |
-| `workers/`         | `consumer/` (event/poll) + `cli/` Cobra subcommand (scheduled)       |
-| `misc/`            | refuse — name what it actually is                                    |
+| Forbidden           | Use instead                                                                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pkg/`              | `go-pkgs/<domain>x/`                                                                                                                       |
+| `shared/`           | `internal/kernel/` (business) or `go-pkgs/<domain>x/` (utility)                                                                            |
+| `common/`/`lib/`    | `go-pkgs/<domain>x/`                                                                                                                       |
+| `utils/`/`helpers/` | domain-prefixed `go-pkgs/<domain>x/`                                                                                                       |
+| `application/`      | `interactor/`                                                                                                                              |
+| `infrastructure/`   | the relevant outbound adapter (`data_repositories/`, `storage/`, …)                                                                        |
+| `interfaces/`       | `ports/`                                                                                                                                   |
+| `mapper/`           | inline in adapter that owns the mapping                                                                                                    |
+| `dto/`              | by scope: 1 adapter → adapter-local; 1 service → `services/<service>/internal/contracts/`; 2+ services → root `internal/contracts/` (R-21) |
+| `gateway/`          | `external_services/<provider>/` or `api/`                                                                                                  |
+| `workers/`          | `consumer/` (event/poll) + `cli/` Cobra subcommand (scheduled)                                                                             |
+| `misc/`             | refuse — name what it actually is                                                                                                          |
 
 ---
 
@@ -59,21 +61,24 @@ Canonical alternatives:
 
 ### Service-internal
 
-```
+```text
 cmd                                    → all (wiring only)
-<inbound_adapter>                      → interactor
+<inbound_adapter>                      → interactor, internal/contracts (service-scoped)
   e.g. api / consumer / cli
-interactor                             → domain, ports
-<outbound_adapter>                     → ports, domain
+interactor                             → domain, ports, internal/contracts (service-scoped)
+<outbound_adapter>                     → ports, domain, internal/contracts (service-scoped)
   e.g. external_services /
        data_repositories /
        producer / storage
+services/<service>/internal/contracts  → go-pkgs (primitive/stdlib only)
 ```
 
 ### Monorepo-level
 
-```
-services/<service>/internal  → internal/contracts, internal/kernel, go-pkgs, external SDK (if used)
+```text
+services/<service>/internal  → services/<service>/internal/contracts (service-scoped),
+                               internal/contracts (cross-service), internal/kernel,
+                               go-pkgs, external SDK (if used)
 internal/contracts           → internal/kernel, go-pkgs
 internal/kernel              → go-pkgs
 go-pkgs                      → (stdlib only; ideally no third-party)
@@ -84,7 +89,8 @@ external SDK repo            → (stdlib and third-party; never imports from thi
 ### Disallowed
 
 - `<layer>` (`domain`, `ports`, `interactor`) importing any adapter folder.
-- Service A's `internal/` importing service B's `internal/`.
+- Service A's `internal/` importing service B's `internal/` — incl. service B's service-scoped `internal/contracts/`. Shared contracts must promote to root `internal/contracts/`.
+- Service-scoped `internal/contracts/` importing `domain/`, `interactor/`, any adapter, or `internal/kernel/`.
 - `internal/kernel/` importing `internal/contracts/`.
 - `go-pkgs/` importing `internal/` or `services/`.
 - External SDK repo importing this repo.
@@ -108,7 +114,8 @@ No one is forced into a remote SDK. Default is always `go-pkgs/infra/`.
 Closed verb set: `create`, `add`, `drop`, `alter`, `rename`, `backfill`, `fix`, `refactor`, `seed`.
 
 Valid (shared):
-```
+
+```text
 001_shared_create_auto_set_updated_at.up.sql
 001_shared_create_auto_set_updated_at.down.sql
 002_taobao_create_orders_table.up.sql
@@ -117,14 +124,16 @@ Valid (shared):
 ```
 
 Valid (per-service):
-```
+
+```text
 001_create_orders_table.up.sql
 001_create_orders_table.down.sql
 003_scraping_collections.js
 ```
 
 Invalid:
-```
+
+```text
 003_misc_stuff.up.sql                       # free-form verb
 001_shared_taobao_create_table.up.sql       # shared + service combined
 007_lock_fix.up.sql                         # verb as suffix

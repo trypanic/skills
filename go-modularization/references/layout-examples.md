@@ -1,0 +1,240 @@
+# Layout examples and placeholder reference
+
+Companion to [`SKILL.md`](../SKILL.md). Examples here are normative — when a rule
+and an example disagree, the rule wins; report the mismatch.
+
+## Placeholder slots
+
+`<placeholder>` = slot to fill.
+
+| Slot                 | Meaning                     | Example                                                         |
+| -------------------- | --------------------------- | --------------------------------------------------------------- |
+| `<service>`          | service name                | `orders`, `billing`                                             |
+| `<inbound_adapter>`  | entry-point adapter         | `api`, `consumer`, `cli`                                        |
+| `<outbound_adapter>` | exit-point adapter          | `data_repositories`, `external_services`, `producer`, `storage` |
+| `<layer>`            | inner layer                 | `domain`, `interactor`, `ports`                                 |
+| `<context>`          | bounded context / aggregate | `order`, `product`, `user`                                      |
+| `<resource>`         | API resource                | `users`, `invoices`                                             |
+| `<provider>`         | external provider           | `taobao`, `amazon`, `s3`                                        |
+| `<action>`           | verb                        | `publish`, `consume`, `connect`                                 |
+| `<concern>`          | middleware concern          | `auth`, `logging`, `ratelimit`                                  |
+| `<subject>`          | event domain subject        | `order`, `product`                                              |
+| `<verb>`             | past-tense event verb       | `created`, `changed`, `completed`                               |
+| `<N>`                | version int                 | `1`, `2`                                                        |
+| `<domain>`           | utility domain prefix       | `string`, `time`, `slice`                                       |
+| `<pkg>`              | package name                | `stringx`                                                       |
+| `<org>`              | GitHub org / owner          | `acme`, `trypanic`                                              |
+
+## Mature service — full tree
+
+`services/orders/` exercising every rule. The `order` context is promoted in
+`interactor/` (hit ≥10 files); `product` is still suffixed — mixed maturity is
+correct, do not align.
+
+```text
+services/orders/
+  cmd/
+    main.go                                # wiring only: build deps, hand to cli
+  internal/
+    api/
+      orders_handler_v1.go
+      orders_handler_v2.go
+      middleware_auth.go
+      middleware_logging.go
+    consumer/
+      payment_completed_consumer.go        # event
+      stock_level_poller_consumer.go       # polling also lives here
+    cli/
+      serve_command.go
+      reindex_orders_command.go            # scheduled job, triggered externally
+    domain/
+      order.go                             # bare context name, no domain_ prefix
+      product.go
+    interactor/
+      order/                               # promoted: >=10 files, suffix dropped
+        interactor.go
+        create.go
+        cancel.go
+        ...
+      interactor_product.go                # not promoted yet
+    ports/
+      order_port.go
+      order_port_mock.go                   # generated mock; not counted for thresholds
+      product_port.go
+    data_repositories/
+      repository_order.go                  # schema-shaped (PG)
+      repository_product.go
+    storage/
+      storage_invoice_pdf.go               # blob-shaped (S3)
+    external_services/
+      order_sync_taobao.go                 # <subject>_<action>_<provider>
+    producer/
+      order_created_producer.go
+    contracts/                             # service-scoped: shared within orders only
+      order_summary.go                     # used by api + interactor of this service
+    config/
+      config.go
+```
+
+`contracts/` here is the **service-scoped** tier (private to `orders`). It is
+distinct from root `internal/contracts/`, which holds cross-service wire
+payloads. A struct moves from this folder to root only when a *second service*
+consumes it — see the Contract file section below.
+
+## Before/after: context promotion
+
+Before — `order` at 9 files in `interactor/` (borderline band → Step 0; user
+approved promotion at 10):
+
+```text
+interactor/
+  interactor_order.go        # + 8 more interactor_order_*.go files
+  interactor_product.go
+```
+
+After — folder encodes the context, suffix dropped, all import sites updated
+in the same change:
+
+```text
+interactor/
+  order/
+    interactor.go            # package order
+    create.go
+    cancel.go
+  interactor_product.go      # untouched
+```
+
+Importers alias by layer when two layers expose the same context package:
+
+```go
+import (
+    orderintr "example.com/repo/services/orders/internal/interactor/order"
+    orderrepo "example.com/repo/services/orders/internal/data_repositories/order"
+)
+```
+
+## Contract files — two scopes
+
+Contracts are placed by **sharing scope** (R-21). Both folders use package
+`contracts`; alias by scope when one file imports both.
+
+**Cross-service** (root `internal/contracts/`) — wire payload shared by 2+
+services. `internal/contracts/product_changed_event.go`, primitive/stdlib types
+only, never imports `internal/kernel/`:
+
+```go
+package contracts
+
+import "time"
+
+type ProductChangedEvent struct {
+    ProductID  string    `json:"product_id"`
+    ChangedAt  time.Time `json:"changed_at"`
+    PriceCents int64     `json:"price_cents"` // primitive, NOT kernel.Money
+}
+```
+
+**Service-scoped** (`services/<service>/internal/contracts/`) — shared across
+components of one service only, private to that service.
+`services/orders/internal/contracts/order_summary.go`, same field-type
+constraint (primitive/stdlib; no `domain/`, adapter, or `kernel/` imports):
+
+```go
+package contracts
+
+type OrderSummary struct {
+    OrderID    string `json:"order_id"`
+    ItemCount  int    `json:"item_count"`
+    TotalCents int64  `json:"total_cents"`
+}
+```
+
+Promote `OrderSummary` to root `internal/contracts/` only when a *second
+service* consumes it. A second service importing
+`services/orders/internal/contracts` is a forbidden cross-service import — the
+ban is what forces promotion.
+
+## Multi-module workspace (topology B)
+
+Same folder layout as the single-module monorepo — only `go.mod`/`go.work`
+differ (ADR-22). A root `go.work` ties one module per shareable unit; services
+`require` the shared modules, resolved locally by the workspace. Root
+`internal/contracts/` is namespaced by **producing** service at scale.
+
+```text
+repo/
+  go.work                          # use ( ./go-pkgs ./internal ./services/* )
+  go.work.sum
+  go-pkgs/
+    go.mod                         # module: shared utils
+    timex/now.go
+  internal/
+    go.mod                         # module: shared cross-service
+    contracts/                     # cross-service wire payloads, by producer:
+      orchestrator/                #   contracts the orchestrator service exposes
+      worker/                      #   contracts the worker service exposes
+    kernel/                        # shared business primitives
+  services/
+    orchestrator/
+      go.mod                       # module: requires repo/internal, repo/go-pkgs
+      cmd/main.go
+      internal/{api,interactor,domain,ports,data_repositories,config}/
+    worker/
+      go.mod
+      cmd/main.go
+      internal/{external_services,interactor,domain,ports,config}/
+  migrations/postgres/             # shared-DB layout, service token in filename
+```
+
+`go list ./...` only works from inside a module dir here (the root is not a
+module), so `scripts/arch-checks.sh` scans each `use` dir. Cross-service
+`internal/` imports are blocked twice: by the skill's dependency rule and by
+Go's own `internal/` visibility (compile error).
+
+## Counter-example: classic layout, annotated
+
+```text
+repo/
+  pkg/                       # FORBIDDEN name -> go-pkgs/<domain>x
+    utils/                   # FORBIDDEN name -> domain-prefixed go-pkgs package
+      helpers.go
+  internal/
+    dto/                     # FORBIDDEN name -> by scope: adapter-local | services/<svc>/internal/contracts/ | root internal/contracts/ (2+ services)
+    services/                # not a layer; business logic -> interactor/
+  workers/                   # FORBIDDEN -> consumer/ (events, polling) + cli/ (scheduled)
+  config/                    # no repo-root config -> services/<service>/internal/config/
+  middleware/                # no top-level middleware -> <inbound_adapter>/middleware_*
+  cmd/
+    server/main.go           # multi-binary FORBIDDEN -> single cmd/main.go + cli/ subcommands
+    worker/main.go
+  scripts/
+    migrate.go               # Go under scripts/ FORBIDDEN -> cli/ subcommand
+```
+
+## Migration filenames
+
+Valid (shared layout, sequence global per technology):
+
+```text
+migrations/postgres/001_shared_create_auto_set_updated_at.up.sql
+migrations/postgres/001_shared_create_auto_set_updated_at.down.sql
+migrations/postgres/002_taobao_create_orders_table.up.sql
+migrations/mongo/003_amazon_create_scraping_collections.js
+```
+
+Valid (per-service layout):
+
+```text
+migrations/orders/postgres/001_create_orders_table.up.sql
+migrations/orders/mongo/003_create_scraping_collections.js
+```
+
+Invalid, with the violated rule:
+
+```text
+migrations/postgres/004_update_stuff.up.sql              # free-form verb; 'update' not in closed set
+migrations/postgres/005_shared_taobao_create_x.up.sql    # shared + service combined
+migrations/postgres/006_orders_lock_fix.up.sql           # verb as suffix
+migrations/postgres/007_taobao_drop_create_x.up.sql      # multiple verbs
+migrations/postgres/008_taobao_create_x.sql              # SQL without .up/.down polarity
+```
