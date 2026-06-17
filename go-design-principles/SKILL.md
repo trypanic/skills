@@ -26,6 +26,14 @@ This skill is **complementary**, not standalone. It assumes [`samber/cc-skills-g
 
 When this skill and a samber skill conflict, the samber skill wins for its topic. This skill only adds principles samber does not cover.
 
+## Complements (Not Duplicated)
+
+| Skill | Relationship |
+|---|---|
+| [`ponytail`](https://github.com/DietrichGebert/ponytail) | Sharpens the KISS / YAGNI judgement below — laziest solution that works, no speculative abstractions, deletion over addition, shortest working diff. Use it to decide whether code should exist at all. |
+
+`ponytail`'s default ladder prefers stdlib and native features before dependencies. In trypanic/go-sdk projects, invert that one step: **`github.com/trypanic/go-sdk` is the priority** — reach for stdlib or another library only when `go-sdk` does not provide the capability. The laziness discipline (don't build it, don't abstract it, don't repeat it) still applies in full; only the dependency-of-choice changes. See `go-sdk-bootstrap` for what the SDK covers.
+
 ## Critical Rules
 
 🚨 **Make illegal states unrepresentable.** Use sealed sum-type interfaces (unexported sealing method) and distinct types per state. Never represent state with a free-form `string`.
