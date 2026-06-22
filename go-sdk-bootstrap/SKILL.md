@@ -67,8 +67,16 @@ Map task to import. Most agents trip on the package-identifier divergence — ha
 | KV / append-only storage                              | `github.com/trypanic/go-sdk/storage`       | `storage`          |
 | OpenAI-compatible chat (non-streaming)                | `github.com/trypanic/go-sdk/llmclient`     | `llmclient`        |
 | Typed env loading                                     | `github.com/trypanic/go-sdk/envs`          | `envs`             |
+| JSON encode/decode helpers                            | `github.com/trypanic/go-sdk/marshal`       | `marshal`          |
+| String normalization / markdown stripping             | `github.com/trypanic/go-sdk/stringutils`   | `stringutils`      |
+| URL building / path joining                           | `github.com/trypanic/go-sdk/urlkit`        | `urlkit`           |
+| Input validation (email, ULID, …)                     | `github.com/trypanic/go-sdk/validators`    | `validators`       |
+| Generic slice ops (chunk, dedup)                      | `github.com/trypanic/go-sdk/slices`        | `slices`           |
+| Exponential backoff for custom retry loops            | `github.com/trypanic/go-sdk/algorithms`    | `algorithms`       |
 
 Bold rows declare a package name that differs from the directory. The compiler will say `undefined: postgres` if the agent calls `postgres.NewPostgresClient(...)` instead of `database.NewPostgresClient(...)`. Same for `mongodb`.
+
+The last six rows (`marshal` … `algorithms`) are pure utility helpers: no constructor triplet, no instrumenter, no tracing — import and call directly.
 
 ---
 
