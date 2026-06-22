@@ -61,6 +61,7 @@ Map task to import. Most agents trip on the package-identifier divergence — ha
 | Outbound HTTP (client)                                | `github.com/trypanic/go-sdk/httpclient`    | `httpclient`       |
 | Outbound HTTP (retrying requester)                    | `github.com/trypanic/go-sdk/httprequest`   | `httprequest`      |
 | HTTP server (Hertz)                                   | `github.com/trypanic/go-sdk/httpserver/hertz` | `hertz`         |
+| gRPC server + client (Kitex)                          | `github.com/trypanic/go-sdk/grpc`          | `grpc`             |
 | Postgres pool                                         | `github.com/trypanic/go-sdk/postgres`      | **`database`**     |
 | MongoDB                                               | `github.com/trypanic/go-sdk/mongo`         | **`mongodb`**      |
 | RabbitMQ pub/sub                                      | `github.com/trypanic/go-sdk/messaging`     | `messaging`        |
@@ -102,7 +103,7 @@ For most SDK packages that produce spans:
 | `NewWithoutTracing(...)` | Explicit no-op instrumenter; for tests or telemetry-free embeds.     |
 | `NewWithInstrumenter(...)` | Caller-provided `*telemetry.Instrumenter`; preferred in production. |
 
-Packages following the triplet: `httprequest`, `llmclient`, `mongo`.
+Packages following the triplet: `httprequest`, `llmclient`, `mongo`, `grpc`.
 
 **Exceptions:**
 
@@ -166,7 +167,7 @@ When generating code, **do not** produce any of the following — these are list
 - `httprequest.WithRawBodies()` outside a development build.
 - `import "github.com/trypanic/go-sdk/ioutils"` from a production code path — `ioutils` is dev-only.
 - `telemetry.InitTracer(...)` in new code — compatibility shim only; use `telemetry.NewInstrumenter`.
-- Reaching into `httpserver/hertz` from non-server code — pulls Hertz transitively into the binary.
+- Reaching into `httpserver/hertz` (or `grpc`) from non-server code — pulls Hertz/Kitex transitively into the binary.
 
 If the user is asking for one of these, push back, cite the rule, and offer the correct alternative.
 
