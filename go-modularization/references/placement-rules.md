@@ -49,6 +49,34 @@ correct — do not align. Promoted package name = context (`package order`);
 importers alias by layer when two layers expose the same context package
 (`orderintr`, `orderrepo`).
 
+## Two interactor shapes (same layer, same folder)
+
+`interactor/` holds two shapes. Both stay flat in `interactor/` until the
+≥10-file promotion threshold; neither gets its own sub-layer.
+
+- **Use-case interactor** — one workflow step, ~1–3 port calls, no spawned
+  goroutines. File: `interactor_<context>.go`.
+- **Process manager / coordinator** — long-running or concurrent: owns a loop,
+  goroutines, mutexes, channels, timers, or retries, and coordinates several
+  ports over time (scraping pipelines, schedulers, reconnect loops, a
+  consumer's inner engine). File: `<role>.go` — `pipeline.go`, `processor.go`,
+  `scheduler.go`, `reconnector.go` — **role-named, no `interactor_` prefix**,
+  because it is named for what it runs, not a CRUD context.
+
+```text
+interactor/
+  interactor_order.go      # use case
+  interactor_payment.go    # use case
+  scheduler.go             # process manager (a loop over seats/ports)
+  reconnector.go           # process manager (session-lifetime loop)
+```
+
+Pick **one** convention per service and apply it to both shapes consistently —
+do not mix `interactor_pipeline.go` with `processor.go` in the same service. A
+process manager's private helper state (a ledger, an emit sink, a drain gate)
+lives beside it in `interactor/` as an unexported type; it is not a use case and
+gets no `interactor_` file of its own.
+
 ## API versioning: suffix, then promote
 
 ```text
@@ -99,34 +127,108 @@ fields, or indexes → `data_repositories/`; opaque bytes addressed by key/path 
 `storage/`. Redis with hashes/sets/typed structures → `data_repositories/`;
 Redis as byte-blob cache → `storage/`.
 
-Distinct lifecycle (promotion trigger above) = provider needs its own
-client/auth/session init or its own retry/rate-limit infra files.
+Distinct lifecycle is the **primary** promotion trigger; the file counts are a
+secondary heuristic when no distinct lifecycle exists. Distinct lifecycle = the
+provider owns a resource set up/torn down per call or per task (a browser
+context, a connection pool, a subscription), or needs its own client/auth/session
+init or its own retry/rate-limit infra files. A "provider-specific file" =
+a non-test `.go` file only that provider needs.
 
 ## Inbound adapter rules
 
-| Adapter     | Files                          | Notes                                           |
-| ----------- | ------------------------------ | ----------------------------------------------- |
-| `api/`      | `<resource>_handler_v<N>.go`   | promote to `api/v<N>/` at ≥5 files              |
-| `consumer/` | `<subject>_<verb>_consumer.go` | events + polling go here                        |
-| `cli/`      | `<action>_command.go`          | CLI subcommands, parallel to `api/`/`consumer/` |
+| Adapter             | Files                          | Notes                                                     |
+| ------------------- | ------------------------------ | -------------------------------------------------------- |
+| `api/`              | `<resource>_handler_v<N>.go`   | promote to `api/v<N>/` at ≥5 files                       |
+| `consumer/`         | `<subject>_<verb>_consumer.go` | events + polling go here                                 |
+| `cli/`              | `<action>_command.go`          | CLI subcommands, parallel to `api/`/`consumer/`          |
+| `grpc/`/`ws/`/`sse/`| `server.go` (+ split, above)   | streaming server; connection-scoped state, see structure |
 
-`api/` is HTTP only. gRPC, GraphQL, WebSocket = new inbound adapter kind →
-Step 0 (candidate names: `grpc/`, `graphql/`, `ws/`).
+`api/` is HTTP only. A **streaming server** — gRPC bidi, WebSocket, SSE — is a
+first-class inbound adapter kind, named by transport: `grpc/`, `ws/`, `sse/`
+(GraphQL → `graphql/`). It does NOT go to Step 0. Only a transport not in this
+list is a genuinely new kind → Step 0.
+
+### Streaming adapter structure
+
+A streaming server owns **connection-scoped mutable state**: a per-connection
+session object and a registry of live connections. Start flat
+(`grpc/server.go`); promote `grpc/` to a split package when one non-test file
+would exceed ~400 LOC OR a second responsibility appears, whichever comes first.
+Canonical split:
+
+```text
+grpc/
+  server.go             # transport setup, keepalive, serve/shutdown
+  <svc>_server.go       # the stream handler: recv loop, frame routing
+  session.go            # connection-scoped state + the live-connection registry
+  translation.go        # wire <-> domain mapping (see "Translation / ACL")
+  <name>_reclaim.go     # reconciler(s) coupled to the registry (see below)
+```
+
+The per-connection session object MAY hold a domain entity (a credit ledger)
+and implement a driven port (a push/sink the interactor calls) — that is
+expected for a streaming server, not a layering violation. It MUST hold **no
+business rules**; those stay in `domain/` and `interactor/`. The generated wire
+types stay inside `grpc/` (or `internal/contracts/**/v<N>`); never let them reach
+`ports/`, `interactor/`, or `domain/`.
+
+A stream **client** to a single upstream is an outbound adapter: `grpc/client.go`
+(or `external_services/<provider>/` when it is one provider among several).
 
 **Single binary per service**: `cmd/main.go` only. All subcommands (server,
 scheduled jobs, one-off tasks, Go-runtime migrations) live inside `cli/`.
 Cobra is the default for new services; if the service already uses another CLI
 framework, keep it — folder rules unchanged. `cmd/` is wiring only.
 
-**Background work routing**: events → `consumer/`. Scheduled → CLI subcommand
-under `cli/`, triggered externally. Polling → `consumer/`. **No `workers/`
-folder.**
+**Background work routing**: events → `consumer/`. Independent scheduled job →
+CLI subcommand under `cli/`, triggered externally. Polling → `consumer/`. A
+**reconciler/sweeper tied to one adapter's state** — a connection registry, a
+lease table, a cache it must read and repair (grace-timer reclaim, restart
+replay, expiry GC) — lives **in that adapter's package** (`grpc/<name>_reclaim.go`,
+`grpc/sweeper.go`) and is started from `cmd/`. Pushing it to `cli/` or
+`consumer/` would sever it from the state it repairs and force that state to leak
+outward. **No `workers/` folder.**
 
 ## Ports, tests, mocks
 
-`ports/` file form: `<context>_port.go`. One port per outbound dependency the
-interactor uses; no ports for inbound adapters; no port without an interactor
-consumer.
+`ports/` file form: `<context>_port.go`, one port per outbound dependency the
+interactor uses; no port without an interactor consumer.
+
+**Port shapes.** A port may be an interface (multi-method) **or** a `func` type
+for a single-method seam (`type Emit func(*Frame) error`). Two roles exist:
+
+- **Query/command ports** — the interactor calls an *outbound* adapter
+  (`WorkClaimer`, `EventApplier`). The common case.
+- **Push/sink/trigger ports** — the interactor pushes through a sink that a
+  *driving* (inbound) adapter implements (a stream server's per-connection
+  `TaskSink`, an `Emit`, a `DispatchTrigger`). A driving adapter implementing a
+  port is allowed and expected for streaming servers — it keeps the wire types
+  out of the interactor. ("No ports for inbound adapters" applies only to
+  request/response inbound handlers, not to push/sink seams.)
+
+**File layout.** One port per file as `<context>_port.go`, OR group a small,
+cohesive set by the adapter they serve as `<adapter>.go` (e.g. `coordination.go`
+holding the stream + sink seams). Pick one convention per service; do not mix.
+
+**Contracts.** A port speaks domain types. It MUST NOT import a generated wire
+contract (versioned `internal/contracts/**/v<N>`, any `*.pb.go`) — that is
+adapter-only (SKILL.md forbidden-imports). Translate at the adapter boundary.
+
+### Translation / Anti-Corruption Layer (ACL)
+
+Domain↔external-wire mapping is an adapter responsibility — keep it beside the
+adapter that owns the wire format, never in a top-level `mapper/` or `dto/`
+(both forbidden):
+
+- Small → inline in the adapter, or `<adapter>_translation.go` next to it.
+- Large (>~200 LOC or >2 files) → a named cluster inside the adapter's promoted
+  folder (`external_services/<provider>/payload.go`, `payload_attributes.go`, or
+  `grpc/translation.go`).
+
+The ACL is **pure** — wire/domain in, the other out, no I/O. The HTTP/stream call
+lives in a sibling client file. Forbidden `mapper/` → an adapter-local
+translation file; forbidden `dto/` → the wire structs live in the adapter (or
+`internal/contracts/` when shared by 2+ services).
 
 `_test.go` lives next to the code under test; `testdata/` allowed anywhere (Go
 convention). Mocks of ports: `ports/<context>_port_mock.go`. Test and generated

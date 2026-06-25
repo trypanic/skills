@@ -10,7 +10,7 @@ and an example disagree, the rule wins; report the mismatch.
 | Slot                 | Meaning                     | Example                                                         |
 | -------------------- | --------------------------- | --------------------------------------------------------------- |
 | `<service>`          | service name                | `orders`, `billing`                                             |
-| `<inbound_adapter>`  | entry-point adapter         | `api`, `consumer`, `cli`                                        |
+| `<inbound_adapter>`  | entry-point adapter         | `api`, `consumer`, `cli`, `grpc`/`ws`/`sse` (streaming, R-23)   |
 | `<outbound_adapter>` | exit-point adapter          | `data_repositories`, `external_services`, `producer`, `storage` |
 | `<layer>`            | inner layer                 | `domain`, `interactor`, `ports`                                 |
 | `<context>`          | bounded context / aggregate | `order`, `product`, `user`                                      |
@@ -209,6 +209,80 @@ repo/
     worker/main.go
   scripts/
     migrate.go               # Go under scripts/ FORBIDDEN -> cli/ subcommand
+```
+
+## Streaming service — god-file, the split, and the proto leak
+
+A bidirectional-stream service (gRPC/WebSocket/SSE) is a first-class inbound
+adapter (R-23). Its trap is the **god-file**: one stream server accreting the
+recv loop, the connection registry, wire↔domain translation, and the reclaim
+reconciler until it is unreviewable.
+
+Anti-pattern — everything in one file:
+
+```text
+internal/
+  grpc/
+    coordination_server.go     # ~800+ LOC: recv loop + per-conn session +
+                               # registry + proto<->domain mapping + reclaim
+                               # timers + sweeper — four responsibilities, one file
+```
+
+Split by responsibility (R-23) once one file passes ~400 LOC or a second
+responsibility appears — suffix-style, no premature subfolders:
+
+```text
+internal/
+  grpc/
+    server.go                  # transport setup, keepalive, serve/shutdown
+    coordination_server.go     # the stream handler: recv loop, frame routing
+    session.go                 # connection-scoped state + live-connection registry
+    translation.go             # wire <-> domain mapping (the ACL, R-26)
+    coordination_reclaim.go    # reconciler coupled to the registry (started from cmd/)
+  ports/
+    coordination_port.go       # TaskSink etc. — a push/sink port the server
+                               # IMPLEMENTS (driving adapter, R-27); interactor calls it
+```
+
+The per-connection `session` type MAY hold a domain entity (a credit ledger) and
+satisfy `ports.TaskSink` — expected for a streaming server (R-27), not a
+violation. The dependency stays `grpc → ports`, never `interactor → grpc`. A
+stream **client** to one upstream is outbound: `grpc/client.go`.
+
+Process-manager interactor (R-24) — role-named, no `interactor_` prefix, beside
+the thin use cases:
+
+```text
+internal/
+  interactor/
+    interactor_session.go      # use case (admission gate, one workflow step)
+    scheduler.go               # process manager: credit-bounded dispatch loop
+    reconnector.go             # process manager: session-lifetime reconnect loop
+    pipeline.go                # process manager: multi-layer scrape pipeline
+```
+
+Proto-leak counter-example (R-25) — the generated contract must NOT cross the
+adapter boundary:
+
+```go
+// internal/interactor/pipeline.go
+import (
+    // FORBIDDEN (R-25): generated wire contract in an inner layer.
+    // arch-checks.sh flags: inner-imports-contracts.
+    coordinationv1 ".../internal/contracts/coordination/v1"
+)
+
+func (p *Pipeline) Run(ctx context.Context, t *coordinationv1.AssignTask) error // leaks the wire type inward
+```
+
+Fix — map at the adapter edge; the interactor speaks domain types:
+
+```go
+// internal/grpc/translation.go  (adapter)
+func toAssignment(a *coordinationv1.AssignTask) domain.Assignment { ... }
+
+// internal/interactor/pipeline.go  (inner — no proto import)
+func (p *Pipeline) Run(ctx context.Context, a domain.Assignment) error
 ```
 
 ## Migration filenames

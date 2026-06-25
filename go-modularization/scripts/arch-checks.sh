@@ -23,9 +23,10 @@ root; folder and migration checks still run.
 Checks: forbidden folder names; forbidden top-level config/middleware/events/
 messages; go build + go vet; module topology (single root go.mod, or go.work
 with every module dir registered under `use`; orphan multi-module flagged);
-eight import invariants
-(layer->adapter, cross-service internal, kernel<->contracts,
-contracts->business, go-pkgs->internal, adapter->adapter, imports-cmd); one
+nine import invariants
+(layer->adapter, inner->generated-contracts, cross-service internal,
+kernel<->contracts, contracts->business, go-pkgs->internal, adapter->adapter,
+imports-cmd); one
 cmd/main.go per service; no Go under
 scripts/; migration filename grammar + up/down pairing; promotion-threshold
 counts (report-only, never fails the run).
@@ -136,7 +137,7 @@ if [ "$run_go" -eq 1 ]; then
     add_v "$check" "$detail"
   done < <(printf '%s\n' "$dump" | awk -F'\t' -v root="$root" '
     function svc(p,   s){ if(p !~ "(^|/)services/") return ""; s=p; sub(".*services/","",s); sub("/.*","",s); return s }
-    function adapter(p,   a){ if(p !~ "/(api|consumer|cli|data_repositories|external_services|producer|storage)(/|$)") return ""; a=p; sub(".*/(internal/)?","",a); sub("/.*","",a); return a }
+    function adapter(p,   a){ if(p !~ "/(api|consumer|cli|grpc|ws|sse|graphql|data_repositories|external_services|producer|storage)(/|$)") return ""; a=p; sub(".*/(internal/)?","",a); sub("/.*","",a); return a }
     {
       ip=$1; rel=$2; sub("^"root"/","",rel); sub("^"root"$","",rel)
       relOf[ip]=rel; impsOf[ip]=$3; order[++cnt]=ip
@@ -149,7 +150,8 @@ if [ "$run_go" -eq 1 ]; then
         for(i=1;i<=n;i++){
           im=imps[i]; if(!(im in relOf)) continue   # only in-repo packages are keys
           imr=relOf[im]; ims=svc(imr); ima=adapter(imr)
-          if (inner && imr ~ "/(api|consumer|cli|data_repositories|external_services|producer|storage)(/|$)") print "layer-imports-adapter\t"ipr" -> "imr
+          if (inner && imr ~ "/(api|consumer|cli|grpc|ws|sse|graphql|data_repositories|external_services|producer|storage)(/|$)") print "layer-imports-adapter\t"ipr" -> "imr
+          if (inner && imr ~ "(^|/)contracts/(.*/)?v[0-9]+(/|$)") print "inner-imports-contracts\t"ipr" -> "imr
           if (ips!="" && ims!="" && ips!=ims && imr ~ "/internal(/|$)") print "cross-service-internal\t"ipr" -> "imr
           if (ipr ~ "(^|/)internal/kernel(/|$)" && imr ~ "(^|/)internal/contracts(/|$)") print "kernel-imports-contracts\t"ipr" -> "imr
           if (ipr ~ "(^|/)internal/contracts(/|$)" && imr ~ "(^|/)internal/kernel(/|$)") print "contracts-imports-kernel\t"ipr" -> "imr
