@@ -125,6 +125,52 @@ Valid only in `.moon/tasks/*.yml` — sets defaults for every task in that file.
 Projects set per-task defaults via `options:` instead. Don't blanket-disable
 `cache` here unless every task in the file is genuinely non-deterministic.
 
+## Task tags (moon ≥ 2.3.0)
+
+Task tags categorize **individual tasks** (distinct from project `tags`, which
+categorize whole projects) so cross-cutting groups can be run with one command,
+regardless of language or project. [src: https://moonrepo.dev/docs/config/project,
+https://moonrepo.dev/blog/moon-v2.3]
+
+> **Version gate:** task tags, the `:#tag` targets, the MQL `taskTag` field, and
+> `mergeTags` all require **moon ≥ 2.3.0**. On an older pin they do nothing — check
+> the `moon` pin in `.prototools` first. (In 2.3 the MQL `tag` field was renamed
+> `projectTag`; bare `tag` in a `--query` no longer resolves.)
+
+```yaml
+tasks:
+  test:
+    command: 'go test ./...'
+    tags: ['ci']                # arbitrary string ids, no closed set
+  lint:
+    command: 'golangci-lint run'
+    tags: ['quality', 'ci']
+```
+
+**Targeting** (CLI and task `deps`):
+
+| Target | Runs |
+| --- | --- |
+| `:#ci` | every task tagged `ci`, all projects |
+| `^:#ci` | every `ci`-tagged task in upstream `dependsOn` projects |
+| `project:#ci` | `ci`-tagged tasks in one project |
+| `#go:#ci` | tasks tagged `ci` in all projects tagged `go` (project-tag : task-tag) |
+
+```bash
+moon run ':#ci'          # named cross-language CI group (vs moon ci = affected-based)
+moon query tasks --tags quality
+```
+
+- **R5.6 — use task tags for a *named* cross-project group** (a `quality` gate, a
+  `db` migration set, a `setup` bootstrap) that spans languages. They complement
+  `moon ci` (affected) and project-scoped inheritance; they don't replace either.
+- **Inheritance:** task tags merge via `mergeTags` (`append` default / `prepend` /
+  `replace` / `preserve`) like other inherited list fields. A task tag set in a
+  scoped `.moon/tasks/*.yml` propagates to every inheriting project's copy of that
+  task — define a cross-cutting tag once, in the scoped file.
+- Tags are arbitrary strings; keep a small, documented vocabulary
+  (e.g. `ci`, `quality`, `db`, `setup`, `dev`) rather than ad-hoc per-task labels.
+
 ## Anti-patterns
 
 - A `script` that's a single command, or a `command` with a pipe (F: R4.1).
@@ -133,3 +179,6 @@ Projects set per-task defaults via `options:` instead. Don't blanket-disable
 - A tasks file with no `inheritedBy` (applies to all) (F9).
 - The same task copy-pasted across projects (F10).
 - An un-pinned tool inside a task body (F4).
+- Task tags (`tasks.<name>.tags`) or `:#tag` targets on a repo pinned to
+  moon < 2.3.0 — they silently no-op (R5.6 version gate).
+- Sprawling ad-hoc task-tag labels instead of a small shared vocabulary (R5.6).

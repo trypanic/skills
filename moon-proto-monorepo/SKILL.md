@@ -167,6 +167,7 @@ Add a new LANGUAGE                      → .prototools pin
                                          + set toolchains.default on the projects.
 Add a TASK used by ONE project         → that project's moon.yml.
 Add a TASK used by N same-kind projects→ .moon/tasks/<name>.yml + inheritedBy {language|toolchain|tag|layer}.
+Group cross-project tasks by purpose   → task tags (tasks.<name>.tags) + run :#tag  [moon >= 2.3.0].
 Add a NEW PROJECT                      → mkdir + moon.yml (language + valid toolchains.default
                                          + layer (+ stack) + metadata);
                                          ensure a projects glob/source covers it.
