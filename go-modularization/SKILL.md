@@ -82,19 +82,22 @@ Placeholders: `<placeholder>` = slot to fill, e.g. `<service>` = `orders`, `<con
 
 Applies to every invocation; never lazy-load this.
 
-Inner layers (abstract, no IO): `domain/` (entities, value objects, invariants), `interactor/` (use cases), `ports/` (interfaces consumed by interactor, implemented by adapters).
-Outer layers (concrete, IO): inbound `api/`, `consumer/`, `cli/`; outbound `data_repositories/`, `external_services/`, `producer/`, `storage/`.
+Inner layers (abstract, no IO): `domain/` (entities, value objects, invariants, stateless domain services), `interactor/` (use cases **and** long-running process managers — see "Two interactor shapes" in `references/placement-rules.md`), `ports/` (interfaces consumed by interactor, implemented by adapters).
+Outer layers (concrete, IO): inbound `api/`, `consumer/`, `cli/`, and streaming servers `grpc/` | `ws/` | `sse/`; outbound `data_repositories/`, `external_services/`, `producer/`, `storage/`, and a streaming client (`grpc/client.go`).
 
-```
+```text
 cmd                  → all (wiring only)
-<inbound_adapter>    → interactor
+<inbound_adapter>    → interactor          (api, consumer, cli, and grpc/ws/sse stream server)
 interactor           → domain, ports
-<outbound_adapter>   → ports, domain
+<outbound_adapter>   → ports, domain       (repos, external_services, producer, storage, stream client)
 ```
+
+A streaming server is a driving (inbound) adapter that MAY also implement a push/sink port the interactor calls (a driven port implemented by a driving adapter — e.g. a per-connection task sink). That is expected for streaming, not a layering violation: the dependency is still `grpc → ports`, never `interactor → grpc`.
 
 **Forbidden imports:**
 
 - `domain` / `ports` / `interactor` importing any adapter.
+- `domain` / `ports` / `interactor` importing a **generated wire contract** — a versioned `internal/contracts/**/v<N>` package or any `*.pb.go` package. Generated contracts are adapter-only; map wire↔domain at the adapter edge.
 - `services/<A>/internal` importing `services/<B>/internal`.
 - `internal/kernel/` importing `internal/contracts/`, or `internal/contracts/` importing `internal/kernel/` — wire payloads use primitive/stdlib types only.
 - `go-pkgs/` importing `internal/` or `services/`.
@@ -109,12 +112,13 @@ interactor           → domain, ports
 
 **Counting rule:** count non-test, non-generated `.go` files — exclude `_test.go`, `*.pb.go`, `*_gen.go`, and other generated output. At/above threshold → promote. Within 2 below → borderline band → Step 0. Below the band → stay flat.
 
-| What                       | Threshold                                                             | Promote to (suffix dropped)     |
-| -------------------------- | --------------------------------------------------------------------- | ------------------------------- |
-| Bounded context in a layer | ≥10 files                                                             | `<layer>/<context>/`            |
-| API version                | ≥5 files                                                              | `api/v<N>/`                     |
-| Middleware for one adapter | ≥4 files                                                              | `<inbound_adapter>/middleware/` |
-| External provider          | ≥10 files, or ≥3 provider-specific infra files, or distinct lifecycle | `external_services/<provider>/` |
+| What                       | Threshold                                                                             | Promote to (suffix dropped)         |
+| -------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------- |
+| Bounded context in a layer | ≥10 files                                                                             | `<layer>/<context>/`                |
+| API version                | ≥5 files                                                                              | `api/v<N>/`                         |
+| Middleware for one adapter | ≥4 files                                                                              | `<inbound_adapter>/middleware/`     |
+| External provider          | distinct resource lifecycle (primary); or ≥10 files / ≥3 provider-specific files      | `external_services/<provider>/`     |
+| Streaming server adapter   | one file >~400 LOC, or a 2nd responsibility appears (registry/translation/reconciler) | split `grpc/` (see placement-rules) |
 
 Promotion updates all import sites in the same change; mechanics, breaking-change escalation, and per-service maturity rules: read [`references/placement-rules.md`](references/placement-rules.md) before promoting.
 
@@ -133,24 +137,35 @@ Concrete corrections to defaults that are wrong here. Read before acting — eac
 - `domain/` files use the **bare context name** (`order.go`), no `domain_` prefix — unlike every other layer, which prefixes (`interactor_`, `repository_`).
 - Promoting a suffix to a subfolder **drops the suffix** (`interactor_order.go` → `order/interactor.go`), and you must update every import site in the same change.
 - Thresholds are not "promote ASAP": below the band, **stay flat**; in the borderline band, **Step 0**. Promotion is a one-way ratchet.
+- `interactor/` holds **two shapes**: thin use cases (`interactor_<context>.go`) and long-running **process managers** — a loop, goroutines, mutexes, timers, or retries coordinating several ports over time (`pipeline.go`, `processor.go`, `scheduler.go`, `reconnector.go`). Process managers are role-named with **no `interactor_` prefix**. Both shapes stay flat in `interactor/` until the ≥10-file promotion. Pick one filename convention per service and apply it consistently.
+- **Generated wire contracts are adapter-only.** A versioned `internal/contracts/**/v<N>` package (or any `*.pb.go`) may be imported only by adapters — never `domain/`, `ports/`, or `interactor/`. A port speaks domain types; translate wire↔domain at the adapter boundary.
+- A **streaming server** (`grpc/` / `ws/` / `sse/`) is a driving adapter that owns connection-scoped state: a per-connection session object and a registry of live connections. Split it (server / session-registry / translation / reconciler) before one file exceeds ~400 LOC. The per-connection object MAY hold a domain entity (a credit ledger) and implement a push/sink port — expected, not a violation; it must hold **no business rules** (those stay in `domain/`).
+- A **reconciler/sweeper coupled to one adapter's state** (a session registry, a lease table, a cache) lives **in that adapter's package** (`grpc/<name>_reclaim.go`), started from `cmd/` — NOT in `cli/`/`consumer/`, which would sever it from the state it repairs. Independent scheduled jobs still → `cli/`; event/poll → `consumer/`.
+- A **port may be a `func` type** for a single-method seam (`type Emit func(...) error`); multi-method ports stay interfaces.
+- **Translation / ACL** (domain↔external-wire mapping) lives with the adapter that owns that wire format — inline, `<adapter>_translation.go`, or a named cluster inside a promoted adapter folder. Never a top-level `mapper/` or `dto/` (both forbidden). The mapping is pure (no I/O); the HTTP/stream call is its sibling.
 
 ## Decision flowcharts
 
 ### Where does a new file go?
 
 1. Is it a CLI subcommand? → `cli/<action>_command.go`.
-2. Is it an HTTP handler? → `api/<resource>_handler_v<N>.go`. (`api/` is HTTP only; gRPC/GraphQL/WebSocket = new adapter kind → Step 0.)
+2. Is it an HTTP handler? → `api/<resource>_handler_v<N>.go`. (`api/` is HTTP only.)
+2b. Is it a gRPC/WebSocket/SSE **stream server**? → `grpc/` (or `ws/`, `sse/`). Read "Streaming adapter structure" in placement-rules before adding files. Only a transport not in this list → Step 0.
+2c. Is it a stream/gRPC **client** to one upstream? → `grpc/client.go` (or `external_services/<provider>/` when it is one provider among several).
 3. Is it an event/poll handler? → `consumer/<subject>_<verb>_consumer.go`.
-4. Is it a use case? → `interactor/interactor_<context>.go`.
-5. Is it an entity, value object, or business invariant? → `domain/<context>.go` (bare context name, no `domain_` prefix).
+4. Is it a use case (one workflow step, ~1–3 port calls, no goroutines)? → `interactor/interactor_<context>.go`.
+4b. Is it a **process manager** (loop, goroutines, mutexes, timers, retries — pipeline/processor/scheduler/reconnect)? → `interactor/<role>.go` (role-named, no `interactor_` prefix). Same layer, stays in `interactor/`.
+5. Is it an entity, value object, business invariant, or stateless **domain service** (a pure operation over domain types)? → `domain/<context>.go` (bare context name, no `domain_` prefix).
 6. Is it a repository (schema-shaped: query language, typed fields, indexes)? → `data_repositories/repository_<context>.go`.
 7. Is it blob storage (opaque bytes by key/path)? → `storage/storage_<context>.go`.
 8. Is it a third-party API call? → `external_services/<subject>_<action>_<provider>.go`.
+8b. Is it domain↔wire **translation / ACL** for an external or wire format? → with the adapter that owns that format (`<adapter>_translation.go`, or a named cluster inside a promoted adapter folder). Never `mapper/`/`dto/`.
 9. Is it an outbound event? → `producer/<subject>_<verb>_producer.go`.
-10. Is it a port interface? → `ports/<context>_port.go`.
+10. Is it a port interface (or a single-method `func` port)? → `ports/<context>_port.go`.
 11. Is it middleware? → `<inbound_adapter>/middleware_<concern>.go`.
+12. Is it a reconciler/sweeper tied to one adapter's in-memory/durable state? → in that adapter's package (e.g. `grpc/<name>_reclaim.go`), started from `cmd/`.
 
-If none clearly apply → Step 0. Naming detail, context identification, edge cases (Redis split, background work routing, tests/mocks): [`references/placement-rules.md`](references/placement-rules.md).
+If none clearly apply → Step 0. Naming detail, context identification, edge cases (Redis split, background work routing, streaming adapter structure, tests/mocks): [`references/placement-rules.md`](references/placement-rules.md).
 
 ### Shared code: which destination?
 
@@ -175,12 +190,12 @@ Read [`references/migrations.md`](references/migrations.md) before creating or r
 
 Reject these names anywhere in the repo:
 
-```
+```text
 pkg, shared, common, lib, utils, application, infrastructure,
 interfaces, helpers, mapper, dto, gateway, workers, misc
 ```
 
-If user proposes one, push back, cite the rule, suggest the canonical alternative (`pkg` → `go-pkgs/<domain>x`, `workers` → `consumer/` + `cli/`, `utils` → domain-prefixed package under `go-pkgs/`). If none clearly fits → Step 0.
+If user proposes one, push back, cite the rule, suggest the canonical alternative (`pkg` → `go-pkgs/<domain>x`, `workers` → `consumer/` + `cli/` (or, for a reconciler coupled to an adapter, that adapter's package), `utils` → domain-prefixed package under `go-pkgs/`, `mapper`/`dto` → adapter-local translation file `<adapter>_translation.go`). If none clearly fits → Step 0.
 
 ---
 
@@ -204,11 +219,11 @@ Cite the rule when refusing. Offer the canonical alternative. If none fits clean
 
 ## Verify
 
-After scaffolding or restructuring, run [`scripts/arch-checks.sh`](scripts/arch-checks.sh) from the repo root (`bash scripts/arch-checks.sh`; add `--json` for machine-readable output, `--help` for usage). It checks: forbidden folder names (vendor/.git pruned), `go build` + `go vet`, the eight import invariants via `go list`, module topology (single root `go.mod`, or a `go.work` with every `go.mod` dir listed under `use`; orphan multi-module flagged), one `cmd/main.go` per service, no Go under `scripts/`, migration filename grammar + up/down pairing, and promotion-threshold counts. Structured report on stdout, diagnostics on stderr; exit 0 = clean, 1 = violations, 2 = bad usage, 3 = missing prerequisite. If the script is unavailable, the per-check commands are inside it — run them manually.
+After scaffolding or restructuring, run [`scripts/arch-checks.sh`](scripts/arch-checks.sh) from the repo root (`bash scripts/arch-checks.sh`; add `--json` for machine-readable output, `--help` for usage). It checks: forbidden folder names (vendor/.git pruned), `go build` + `go vet`, the nine import invariants via `go list` (incl. generated-contracts-adapter-only), module topology (single root `go.mod`, or a `go.work` with every `go.mod` dir listed under `use`; orphan multi-module flagged), one `cmd/main.go` per service, no Go under `scripts/`, migration filename grammar + up/down pairing, and promotion-threshold counts. Structured report on stdout, diagnostics on stderr; exit 0 = clean, 1 = violations, 2 = bad usage, 3 = missing prerequisite. If the script is unavailable, the per-check commands are inside it — run them manually.
 
 Then report using this template (omit empty sections):
 
-```
+```text
 ## go-modularization result
 - Created/renamed: <folder or file paths>
 - Placed: <file → path, one per line>

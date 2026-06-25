@@ -271,6 +271,55 @@ A monorepo uses one of two module topologies. Both are first-class; pick by scal
 
 Single-service repos use topology A (one service, one module); the multi-module split has nothing to separate.
 
+## ADR-23: Streaming server is a first-class inbound adapter; split by responsibility
+
+Streaming RPC servers — gRPC bidirectional, WebSocket, SSE — are first-class inbound adapters named by transport: `grpc/`, `ws/`, `sse/` (`graphql/` for GraphQL). They are **not** escalated as a "new adapter kind"; only a transport outside this set is genuinely new.
+
+A streaming server owns **connection-scoped mutable state**: a per-connection session object and a registry of live connections. Start flat (`grpc/server.go`); split the package when one non-test file exceeds ~400 LOC or a second responsibility appears. Canonical split:
+
+- `server.go` — transport setup, keepalive, serve/shutdown.
+- `<svc>_server.go` — the stream handler: recv loop, frame routing.
+- `session.go` — connection-scoped state + the live-connection registry.
+- `translation.go` — wire↔domain mapping (ADR-26).
+- `<name>_reclaim.go` — reconciler(s) coupled to the registry (below).
+
+The per-connection object MAY hold a domain entity (a credit ledger) and implement a driven push/sink port (ADR-27); it holds **no business rules** — those stay in `domain/`/`interactor/`. A stream **client** to one upstream is an outbound adapter: `grpc/client.go` (or `external_services/<provider>/` when one provider among several).
+
+A reconciler/sweeper coupled to one adapter's state (a connection registry, a lease table, a cache) lives **in that adapter's package** (`grpc/<name>_reclaim.go`), started from `cmd/` — not `cli/`/`consumer/`, which would sever it from the state it repairs. This refines ADR-18: independent scheduled jobs still route to `cli/`, event/poll to `consumer/`.
+
+## ADR-24: `interactor/` holds two shapes — use cases and process managers
+
+The application layer holds two file shapes, both flat in `interactor/` until the ≥10-file promotion (ADR-05):
+
+- **Use-case interactor** — one workflow step, ~1–3 port calls, no spawned goroutines. File: `interactor_<context>.go`.
+- **Process manager / coordinator** — long-running or concurrent (a loop, goroutines, mutexes, channels, timers, retries) coordinating several ports over time. File: `<role>.go` (`pipeline.go`, `processor.go`, `scheduler.go`, `reconnector.go`) — role-named, **no `interactor_` prefix**.
+
+Pick one filename convention per service and apply it to both shapes consistently. A process manager's private helper state (a ledger, an emit sink, a drain gate) lives beside it as an unexported type — it is not a use case and gets no `interactor_` file of its own.
+
+## ADR-25: Generated wire contracts are adapter-only
+
+A **generated wire contract** — a versioned package `internal/contracts/**/v<N>` or any `*.pb.go` package — may be imported only by adapters (`api/`, `grpc/`, `ws/`, `sse/`, `consumer/`, `producer/`, `external_services/`, `data_repositories/`, `storage/`). It is forbidden in `domain/`, `ports/`, and `interactor/`. Ports speak domain types; translate wire↔domain at the adapter boundary (ADR-26).
+
+This refines ADR-21 (which places hand-written contract/DTO types by sharing scope) by binding *generated transport types* to the edge regardless of scope. Enforced by `scripts/arch-checks.sh` (`inner-imports-contracts`).
+
+## ADR-26: Translation / Anti-Corruption Layer lives with its adapter
+
+Domain↔external-wire mapping is an adapter responsibility, placed with the adapter that owns the wire format — never a top-level `mapper/` or `dto/` (both forbidden, ADR forbidden-names):
+
+- Small → inline in the adapter, or `<adapter>_translation.go` beside it.
+- Large (>~200 LOC or >2 files) → a named cluster inside the adapter's promoted folder (`external_services/<provider>/payload.go`, `payload_attributes.go`, or `grpc/translation.go`).
+
+The ACL is **pure** — wire/domain in, the other out, no I/O; the HTTP/stream call is a sibling client file. This is the positive guidance behind the `mapper/`/`dto/` ban.
+
+## ADR-27: Port shapes — interfaces, func ports, and driving-adapter sinks
+
+A port is an interface (multi-method) **or** a `func` type for a single-method seam (`type Emit func(...) error`). Two roles:
+
+- **Query/command ports** — the interactor calls an *outbound* adapter (`WorkClaimer`, repository ports). The common case.
+- **Push/sink/trigger ports** — the interactor pushes through a sink that a *driving* (inbound) adapter implements (a stream server's per-connection task sink, an `Emit`, a dispatch trigger). A driving adapter implementing a port is allowed and expected for streaming; the dependency stays `adapter → ports`, never `interactor → adapter`.
+
+File layout: `<context>_port.go`, or group a small cohesive set as `<adapter>.go`; one convention per service. ("No ports for inbound adapters" in ADR-15's spirit applies to request/response handlers, not to push/sink seams.)
+
 ---
 
 ## Dependency direction
@@ -304,7 +353,8 @@ external SDK repo            → (stdlib and third-party; never imports from thi
 
 ### Disallowed
 
-- `<layer>` (`domain`, `ports`, `interactor`) importing any adapter folder.
+- `<layer>` (`domain`, `ports`, `interactor`) importing any adapter folder — including a streaming server adapter (`grpc/`, `ws/`, `sse/`).
+- `<layer>` (`domain`, `ports`, `interactor`) importing a **generated wire contract** (a versioned `internal/contracts/**/v<N>` package or any `*.pb.go`). Generated transport types are adapter-only (ADR-25); map at the adapter edge.
 - One service's `internal/` importing another service's `internal/` — i.e. `services/<A>/internal` ⇸ `services/<B>/internal`. This includes service A importing service B's service-scoped `internal/contracts/`; genuinely shared contracts must be promoted to root `internal/contracts/` (ADR-21).
 - Service-scoped `internal/contracts/` importing `domain/`, `interactor/`, any adapter, or `internal/kernel/` — transfer shapes use primitive/stdlib types only.
 - `internal/kernel/` importing `internal/contracts/`.
