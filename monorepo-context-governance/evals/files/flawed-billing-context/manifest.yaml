@@ -1,0 +1,38 @@
+apiVersion: context/v1
+kind: BoundedContext
+
+identity:
+  name: billing
+  title: Billing
+  status: active
+  owner:
+    team: commerce-platform
+
+purpose:
+  statement: >
+    Handles invoices and payments.
+
+responsibilities:
+  - invoices
+
+boundaries:
+  dependencies:
+    allowed:
+      - context: orders
+        via: direct-db-read
+        reason: Billing reads order tables for invoice generation.
+
+contracts:
+  consumed:
+    - id: orders.order_placed
+      type: event
+      version: "1.x"
+      from: orders
+      usage: "Create draft invoice."
+      ref: contracts/consumed/orders-order-placed.md
+
+entrypoints:
+  source:
+    - services/billing
+  tests:
+    - services/billing/tests

@@ -1,0 +1,50 @@
+[
+  {
+    "query": "We need to reorganize our monorepo docs into bounded context packages. Can you design the docs/contexts structure and explain where manifests, workflows, runbooks, and ADRs should live?",
+    "should_trigger": true
+  },
+  {
+    "query": "Create a manifest.yaml and context-map.yaml for the inventory context. It owns stock reservation and publishes inventory_reserved events.",
+    "should_trigger": true
+  },
+  {
+    "query": "Our old docs folder mixes API contracts, runbooks, and design decisions for Orders. Help classify it before moving anything.",
+    "should_trigger": true
+  },
+  {
+    "query": "Billing consumes orders.order_placed. Should we copy the schema locally or reference the Orders contract?",
+    "should_trigger": true
+  },
+  {
+    "query": "Do we need an ADR before splitting the fulfillment context into shipping and warehouse contexts?",
+    "should_trigger": true
+  },
+  {
+    "query": "Agents keep loading every document before fixing bugs. Can you define a context-map router so they read only task-relevant docs?",
+    "should_trigger": true
+  },
+  {
+    "query": "Fix the null pointer in services/orders/src/OrderController.ts and add a unit test.",
+    "should_trigger": false
+  },
+  {
+    "query": "Please rewrite this README to sound more professional and fix grammar.",
+    "should_trigger": false
+  },
+  {
+    "query": "Generate a Kubernetes deployment manifest for the pricing service.",
+    "should_trigger": false
+  },
+  {
+    "query": "Explain the difference between bounded contexts and microservices in general terms.",
+    "should_trigger": false
+  },
+  {
+    "query": "Add OpenAPI docs for a single endpoint in the auth service. No cross-context ownership or contract migration involved.",
+    "should_trigger": false
+  },
+  {
+    "query": "Write a Python script that scans markdown files and counts broken links.",
+    "should_trigger": false
+  }
+]

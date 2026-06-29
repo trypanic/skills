@@ -1,0 +1,52 @@
+{
+  "skill_name": "monorepo-context-governance",
+  "evals": [
+    {
+      "id": "create-orders-context",
+      "prompt": "Use the monorepo context governance skill to create a bounded-context documentation package for Orders. The Orders context owns order intake, order state transitions, and the order_placed event. It does not own pricing or shipping. Source code lives in services/orders and tests live in services/orders/tests.",
+      "expected_output": "A context package plan or files for Orders that include manifest.yaml, guide.md, context-map.yaml, a published order_placed contract location, explicit non-responsibilities for pricing and shipping, and validation guidance.",
+      "files": [],
+      "assertions": [
+        "The output treats Orders as a bounded-context knowledge package, not just a code folder.",
+        "The manifest includes responsibilities, non-responsibilities, dependencies or forbidden dependencies, contracts, and entrypoints.",
+        "The order_placed event is represented as a published contract owned by Orders.",
+        "Pricing and shipping are explicitly excluded from Orders ownership.",
+        "The output includes or references a context-map.yaml with closed-vocabulary task intents."
+      ]
+    },
+    {
+      "id": "migrate-legacy-orders-doc",
+      "prompt": "Use the monorepo context governance skill to classify and migrate the legacy Orders documentation in evals/files/legacy-orders-doc.md into the governed docs/contexts model. Produce the migration classification and target artifact plan.",
+      "expected_output": "A migration classification that separates identity, responsibility, workflow, runbook, playbook, ADR, published contract, consumed contract, duplicate, obsolete, unknown, and conflict material before proposing target artifacts.",
+      "files": [
+        "evals/files/legacy-orders-doc.md"
+      ],
+      "assertions": [
+        "The output classifies source sections before moving or rewriting them.",
+        "The output does not copy the old document structure mechanically.",
+        "The output sends behavior to workflows, diagnosis to runbooks, deliberate change steps to playbooks, and rationale to ADRs.",
+        "The output treats consumed contracts as references rather than copied schema bodies.",
+        "The output captures unknowns or conflicts instead of silently resolving them."
+      ]
+    },
+    {
+      "id": "review-flawed-context",
+      "prompt": "Use the monorepo context governance skill to review the flawed Billing context package in evals/files/flawed-billing-context. Report errors first, then warnings, and include the validator command you would run.",
+      "expected_output": "A review that identifies structural and governance issues in the Billing package, especially copied consumed schema bodies, missing context-map guardrails, weak manifest ownership or contract declarations, and unreachable documents.",
+      "files": [
+        "evals/files/flawed-billing-context/manifest.yaml",
+        "evals/files/flawed-billing-context/guide.md",
+        "evals/files/flawed-billing-context/context-map.yaml",
+        "evals/files/flawed-billing-context/contracts/consumed/orders-order-placed.md",
+        "evals/files/flawed-billing-context/references/random-note.md"
+      ],
+      "assertions": [
+        "The output reports errors before warnings.",
+        "The output flags copied schema bodies under contracts/consumed as invalid.",
+        "The output flags missing or weak context-map guardrails.",
+        "The output checks whether documents are reachable from guide.md or context-map.yaml.",
+        "The output includes the validate_context_package.py command."
+      ]
+    }
+  ]
+}

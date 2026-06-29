@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monorepo Context Governance"
+  short_description: "Govern bounded-context docs"
+  default_prompt: "Use $monorepo-context-governance to create a context package for a microservices monorepo."

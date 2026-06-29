@@ -1,0 +1,71 @@
+apiVersion: context/v1
+kind: BoundedContext
+
+identity:
+  name: <stable-context-id>
+  title: <human-readable-title>
+  status: proposed # proposed | active | deprecated | retired
+  owner:
+    team: <team-id>
+    contact: <team-channel-or-dl>
+  created: <YYYY-MM-DD>
+  last_reviewed: <YYYY-MM-DD>
+
+purpose:
+  statement: >
+    <One concise paragraph explaining why this context exists.>
+  problem_solved: >
+    <The specific problem owned by this context.>
+
+responsibilities:
+  - <capability-owned-by-this-context>
+
+non_responsibilities:
+  - capability: <capability-not-owned-here>
+    owned_by: <other-context-id>
+    reason: <brief reason>
+
+boundaries:
+  knowledge_in:
+    - <knowledge-category-owned-here>
+  knowledge_out:
+    - knowledge: <knowledge-category-not-owned-here>
+      lives_in: <other-context-id>
+  dependencies:
+    allowed:
+      - context: <other-context-id>
+        via: contract
+        contracts:
+          - <contract-id>
+        reason: <why this dependency exists>
+    forbidden:
+      - context: <other-context-id>
+        reason: <why coupling is forbidden>
+
+contracts:
+  published: []
+  consumed: []
+
+observability:
+  signals: []
+
+entrypoints:
+  source:
+    - <path-or-module>
+  tests:
+    - <path-or-suite>
+  runtime: []
+  docs:
+    guide: guide.md
+    context_map: context-map.yaml
+
+governance:
+  versioning: semver
+  open_questions: open-questions.md
+  review_triggers:
+    - contract_change
+    - boundary_change
+    - ownership_change
+    - adr_superseded
+  since: <semver-or-date>
+  sunset: null

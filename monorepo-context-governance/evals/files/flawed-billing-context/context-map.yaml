@@ -1,0 +1,19 @@
+apiVersion: context-map/v1
+context: billing
+
+bootstrap:
+  - manifest.yaml
+  - guide.md
+
+intents:
+  allowed:
+    - fix_bug
+    - investigate_incident
+    - update_database
+
+tasks:
+  fix_bug:
+    read:
+      - workflows/invoice-flow.md
+    code: entrypoints.source
+    tests: entrypoints.tests

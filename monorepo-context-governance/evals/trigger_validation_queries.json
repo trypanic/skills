@@ -1,0 +1,34 @@
+[
+  {
+    "query": "Review this docs/contexts/payments package for governance problems: consumed contracts, guide reachability, ADR requirements, and context-map guardrails.",
+    "should_trigger": true
+  },
+  {
+    "query": "Where should a contractual metric used by another team's alert be declared in our context docs?",
+    "should_trigger": true
+  },
+  {
+    "query": "We want to add Money as a shared model used by Orders, Billing, and Pricing. What governance docs and approvals are needed?",
+    "should_trigger": true
+  },
+  {
+    "query": "The Product docs say Pricing owns discounts, but Orders has workflow steps that redefine discount rules. Help resolve the source-of-truth conflict.",
+    "should_trigger": true
+  },
+  {
+    "query": "Update package.json dependencies and run the test suite.",
+    "should_trigger": false
+  },
+  {
+    "query": "Summarize this incident report into three bullets for Slack.",
+    "should_trigger": false
+  },
+  {
+    "query": "Draw a Mermaid sequence diagram for checkout calling pricing and inventory.",
+    "should_trigger": false
+  },
+  {
+    "query": "Add a troubleshooting section to the README for local Docker startup errors.",
+    "should_trigger": false
+  }
+]

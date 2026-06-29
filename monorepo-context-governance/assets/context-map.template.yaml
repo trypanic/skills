@@ -1,0 +1,99 @@
+apiVersion: context-map/v1
+context: <context-id>
+
+bootstrap:
+  - manifest.yaml
+  - guide.md
+
+intents:
+  allowed:
+    - fix_bug
+    - investigate_incident
+    - add_feature
+    - change_contract
+    - change_workflow
+    - refactor_no_behavior_change
+    - migrate_context
+    - update_docs
+    - split_context
+
+tasks:
+  fix_bug:
+    read:
+      - workflows/<main-flow>.md
+      - observability/<signals>.md
+    inspect_contracts:
+      - published
+      - consumed
+    code: entrypoints.source
+    tests: entrypoints.tests
+    do_not_read:
+      - references/
+      - playbooks/
+    invariant:
+      - published_contracts_unchanged_unless_explicitly_requested
+    require_adr_if:
+      - boundary_changes
+      - dependency_changes
+      - ownership_changes
+    symptoms: {}
+
+  investigate_incident:
+    read:
+      - runbooks/<failure-mode>.md
+      - observability/<signals>.md
+    inspect_contracts:
+      - published
+      - consumed
+    code: entrypoints.source
+    tests: entrypoints.tests
+    do_not_read:
+      - playbooks/
+    require_adr_if:
+      - incident_reveals_architectural_decision
+
+  add_feature:
+    read:
+      - manifest.yaml
+      - guide.md
+      - workflows/<affected-flow>.md
+    inspect_contracts:
+      - published
+      - consumed
+    code: entrypoints.source
+    tests: entrypoints.tests
+    require_adr_if:
+      - new_boundary
+      - new_dependency
+      - new_contract
+
+  change_contract:
+    read:
+      - contracts/published/
+      - ../../governance/contract-versioning.md
+    inspect_contracts:
+      - published
+      - consumed
+    require_adr_if:
+      - breaking_semantic_change
+      - dependency_topology_changes
+    do_not_read:
+      - references/
+
+  refactor_no_behavior_change:
+    read:
+      - workflows/<affected-flow>.md
+    code: entrypoints.source
+    tests: entrypoints.tests
+    invariant:
+      - published_contracts_unchanged
+      - behavior_unchanged
+    require_adr_if:
+      - architecture_changes
+
+guardrails:
+  - never_redefine_a_consumed_contract
+  - never_modify_a_published_contract_without_version_bump
+  - never_depend_on_other_context_internals
+  - never_change_context_identity_without_adr
+  - never_treat_references_as_source_of_truth
