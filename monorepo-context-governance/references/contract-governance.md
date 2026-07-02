@@ -2,130 +2,77 @@
 
 ## Reading Map
 
-TL;DR: A contract crosses a context boundary and is depended on for stable shape, meaning, or presence. Publish owned schemas; consume foreign contracts by reference only.
+TL;DR: An artifact is a contract iff it crosses a context boundary and another party depends on its stable shape, meaning, or presence. Ownership (published/consumed) is the primary axis. The schema file is the source of truth. Consumed = id + version reference, never a copy.
 
 Read:
 
-- "Definition" when deciding if something is contractual.
-- "Published contracts" and "Consumed contracts" when editing contract artifacts.
-- "Versioning" before changing a schema.
-- "Shared kernel" before adding common models.
+- "Definition and taxonomy" when classifying an artifact.
+- "Published contracts" when creating or changing an owned contract.
+- "Consumed contracts" when depending on another context.
+- "Versioning" for any shape or semantic change.
+- "Operational contracts" for metrics/logs/spans.
+- "Shared kernel" when someone proposes shared models.
 
-## Definition
+## Definition and Taxonomy
 
-An artifact is a contract only if:
+An artifact is a contract iff:
 
 1. it crosses a context boundary; and
 2. another context, team, external system, operator, automation, or agent depends on its stable shape, meaning, or presence.
 
-If it is internal to one context, it is not a contract.
+Internal-only definitions are never contracts.
 
-## Taxonomy
-
-| Concept | Contract? | Rule |
+| Concept | Contract? | Note |
 | --- | ---: | --- |
 | Published contract | Yes | Owned and versioned by this context. |
-| Consumed contract | Yes | Owned elsewhere and referenced here with a pinned version. |
-| Event | Yes, if published | Fact that already happened and is emitted for consumers. |
+| Consumed contract | Yes | Owned elsewhere; referenced here by id + pinned version. |
+| Event | Yes, if published | Fact that happened, emitted for consumers. |
 | Command | Yes, if exposed | Intent directed at the owning context. |
 | Query | Yes, if exposed | Read operation directed at the owning context. |
-| API | Yes | Exposed commands/queries over a transport. |
-| Schema | Yes | Machine-readable artifact defining structure and relevant semantics. |
-| DTO crossing the wire | Part of contract | Serialization shape of a contract. |
-| Internal DTO | No | Internal implementation detail. |
-| Domain model | No | Internal model. Never expose as a cross-context dependency. |
-| Port | No | Code interface that may realize or consume a contract. |
-| Adapter | No | Technology binding. Never a contract. |
-| Workflow | Usually no | Contractual only when another party depends on stable semantics. |
-| Runbook | Usually no | Contractual only when automation/operators depend on stable inputs/outputs. |
-| Metric/log/span | Only if declared contractual | Stable only when depended on externally or by automation. |
-| Reference | No | Supporting material. Not authoritative. |
+| API | Yes | Set of exposed commands/queries over a transport. |
+| DTO crossing the wire | Part of contract | Serialization shape. |
+| Internal DTO | No | Implementation detail. |
+| Domain model | No | Never exposed as a cross-context dependency. |
+| Port / adapter | No | Code interface / technology binding; may realize a contract, is not one. |
+| Workflow | Usually no | Contractual only if another party depends on its stable semantics — then publish it with `kind: workflow` and a versioned behavioral spec as its schema artifact. |
+| Runbook | Usually no | Contractual only if automation/operators depend on stable inputs/outputs. |
+| Metric/log/span | Only if declared contractual | See "Operational contracts". |
+| Reference | No | Supporting material, never authoritative. |
 
-## Ownership Axis
+An exposed operation is declared exactly once: either as a standalone `event`/`command`/`query` contract or as part of an `api` contract, never both. The registry generator fails on duplicate operation declarations.
 
-Classify contracts by ownership first:
+## Ownership Is the Primary Axis
 
 ```text
 published = owned here, versioned here, source of truth here
-consumed  = owned elsewhere, referenced here, never copied here
+consumed  = owned elsewhere, referenced here by id, never copied here
 ```
 
-Use direction only as a secondary axis:
-
-```text
-inbound  = received or served by this context
-outbound = emitted or invoked by this context
-```
-
-Ownership governs versioning, deprecation, impact analysis, migration responsibility, approval, and source-of-truth location.
+Ownership governs versioning, deprecation, impact analysis, migration responsibility, and approval. Direction (inbound/outbound) is descriptive metadata only.
 
 ## Published Contracts
 
-Published contracts live under:
-
-```text
-docs/contexts/<context>/contracts/published/
-```
-
-Recommended organization:
-
-```text
-contracts/
-  published/
-    events/
-      <event-name>/
-        v1.schema.<ext>
-        v2.schema.<ext>
-    commands/
-      <command-name>/
-        v1.schema.<ext>
-    queries/
-      <query-name>/
-        v1.schema.<ext>
-    apis/
-      <api-name>/
-        v1.schema.<ext>
-```
+Location: `contexts/<id>/contracts/published/<contract-name>/` containing `contract.md` (type: Contract) plus the versioned schema family (`v1.schema.<ext>`, `v2.schema.<ext>`, …).
 
 Rules:
 
-- Keep one contract as one authoritative schema family.
-- Treat the schema as source of truth.
-- Let prose explain but never redefine.
-- Treat examples as non-authoritative unless explicitly declared as contract tests.
-- Register published contracts in `manifest.contracts.published`.
-- Require a new major version for breaking changes.
-- Require deprecated versions to declare replacement and retirement target.
+- One contract = one `contract.md` + one authoritative schema family, versioned side by side.
+- The schema file is the source of truth. The `contract.md` body explains (`# Schema` notes, `# Examples` per OKF conventions) but must not redefine.
+- Every published contract is declared in `context.md` frontmatter (`contracts.published`) with id, kind, version, stability.
+- Examples are non-authoritative unless explicitly declared contract tests.
+- Deprecated contracts require a non-null `replacement` and a retirement target.
+- The schema format (JSON Schema, protobuf, Avro, OpenAPI, …) is a repo-level ADR made at Tier 1. Version-bump checking is implemented per chosen format — do not pretend a generic cross-format differ exists.
 
 ## Consumed Contracts
 
-Consumed contracts are references to contracts owned by another context.
-
-Declare them in `manifest.yaml`:
-
-```yaml
-contracts:
-  consumed:
-    - id: pricing.price_calculated
-      version: "1.x"
-      from: pricing
-      usage: "Update the estimated order total."
-      ref: ../pricing/contracts/published/events/price_calculated/v1.schema.json
-```
-
-Use `contracts/consumed/` only for non-authoritative notes such as local usage constraints, compatibility notes, accepted version examples, migration notes, or field-name mappings.
-
-Rules:
-
-- Do not put schema bodies in consumed contracts.
-- Do not redefine fields.
-- Point to the owner's published schema.
-- Do not let local notes override the owner schema.
-- If local usage contradicts the published schema, treat the contract as insufficient or the consumer as wrong.
+- Declared in `context.md` frontmatter by id + version. Nothing else is required.
+- Never declare a path to the owner's schema. Resolution goes through the generated `docs/registry.yaml`; a path couples the consumer to the owner's folder layout, which violates the internals rule.
+- `contracts/consumed/` is optional and holds only non-authoritative notes: local usage constraints, field-name mapping to local language, accepted-version examples, migration notes. Any schema body found there is an error (enforced rule E4).
+- If local usage contradicts the published schema, either the contract is insufficient or the consumer is wrong. File an open question or an ADR with the owner. Never patch locally.
 
 ## Versioning
 
-Use SemVer for published contracts:
+SemVer per published contract:
 
 ```text
 MAJOR = breaking change
@@ -133,120 +80,50 @@ MINOR = backward-compatible addition
 PATCH = clarification with no shape or semantic change
 ```
 
-Breaking changes include removing fields, renaming fields, changing types, tightening validation, changing requiredness, changing semantics, changing ordering guarantees consumers depend on, changing idempotency meaning, or changing compatibility expectations.
+Breaking: removing/renaming a field, changing a type, tightening validation, changing requiredness, changing semantics, changing ordering guarantees consumers depend on, changing idempotency meaning, changing compatibility expectations.
 
-Backward-compatible changes include adding optional fields, loosening validation, adding a compatible event type under an existing envelope, adding optional metadata, or clarifying docs without behavior change.
+Backward-compatible: adding an optional field, loosening validation, adding a compatible event type under an existing envelope, adding optional metadata, documentation clarifications.
 
-For a breaking change, produce an impact declaration like:
+A breaking change requires an impact declaration:
 
 ```yaml
 contract: orders.order_placed
-from: v1.4.0
-to: v2.0.0
+from: 1.4.0
+to: 2.0.0
 breaking: true
 reason: "field 'legacyId' is removed"
-affected_consumers:
-  - context: invoicing
-    current_version: "1.x"
-    required_action: "migrate to orderId"
+affected_consumers: []   # GENERATED from all contexts' contracts.consumed via registry.yaml
 migration: "use 'orderId'; legacyId retired after 90 days"
 deprecation_window: "90d"
 adr: ADR-0042
 ```
 
-Derive `affected_consumers` from declared `manifest.contracts.consumed` across contexts, not from hand-maintained notes only.
-
-## Contractual vs Non-Contractual
-
-A definition is contractual when another context, team, external system, operator, automation, or agent depends on its stable shape, meaning, or presence.
-
-Contractual examples:
-
-- event schema consumed by another context;
-- command payload exposed by a context;
-- query response consumed by another context;
-- public API schema;
-- operational signal used by a shared alert;
-- metric used by an SLO;
-- log/span field used by incident automation;
-- error envelope consumed across contexts;
-- shared identifier format.
-
-Non-contractual examples:
-
-- local workflow explanation;
-- local implementation note;
-- internal DTO;
-- private domain model;
-- internal metric not used by another party;
-- debugging note;
-- exploratory reference;
-- illustrative diagram;
-- local code interface;
-- adapter details.
+`affected_consumers` is generated from consumed declarations across contexts — never hand-maintained. This is buildable because consumption is declared by id in a fixed frontmatter location.
 
 ## Operational Contracts
 
-Make a signal contractual only when at least one condition is true:
+A signal (metric/log/span) is contractual only if at least one holds:
 
-- It is used by shared alerts.
-- It is used by cross-context runbooks.
-- It is consumed by another team or context.
-- It is part of an SLO/SLA.
-- It is consumed by automation or agents.
-- It is required for cross-context diagnosis.
+- used by shared alerts;
+- used by cross-context runbooks;
+- consumed by another team or context;
+- part of an SLO/SLA;
+- consumed by automation or agents;
+- required for cross-context diagnosis.
 
-Contractual signal:
-
-```yaml
-observability:
-  signals:
-    - name: "orders.task.claimed.total"
-      type: metric
-      meaning: "Number of tasks successfully claimed by workers."
-      contractual: true
-      version: "1.0.0"
-      stability: stable
-      used_by:
-        - context: operations
-          purpose: "worker assignment alert"
-```
-
-Non-contractual signal:
-
-```yaml
-observability:
-  signals:
-    - name: "orders.debug.selector_attempts"
-      type: log
-      meaning: "Debug information for selector fallback attempts."
-      contractual: false
-      stability: internal
-```
+Contractual signals are declared in `context.md` frontmatter (`signals`) with name, kind, version, and `used_by`. Everything else is an internal observability detail: it lives in `observability.md` without a version and must not be treated as a stable dependency (advisory rule A6).
 
 ## Shared Kernel
 
-Default to no shared kernel. Prefer shared contracts over shared kernels.
+Default: **no shared kernel**. Prefer contracts — ownership is clear, versioning explicit, consumers pin versions, internals stay private.
 
-A shared kernel is allowed only when:
+A shared kernel is allowed only when all hold:
 
-- the concept has identical semantics across contexts;
-- it must remain in lockstep;
+- identical semantics across contexts that must move in lockstep;
 - duplication would create semantic corruption;
 - owners agree to co-own it;
-- an ADR justifies it.
+- an ADR justifies it, approved by at least two affected owners.
 
-Allowed examples: `Money`, `Currency`, shared identifier format, common error envelope, cross-context message envelope.
+Allowed examples: `Money`, `Currency`, shared identifier formats, common error/message envelopes. Forbidden: domain policy, business rules, convenience utilities, framework helpers, adapters, anything shared merely because it is textually similar.
 
-Forbidden examples: domain policy, business rules, convenience utilities, framework helpers, technology adapters, or anything used in two places merely because it is textually similar.
-
-Treat shared kernel as its own bounded context:
-
-```text
-docs/contexts/shared-kernel/
-  manifest.yaml
-  contracts/
-  decisions/
-```
-
-Require ADR and approval from at least two affected owners for additions.
+Model it as its own bounded context (`docs/contexts/shared-kernel/` with `context.md` + published contracts).

@@ -3,49 +3,52 @@
   "evals": [
     {
       "id": "create-orders-context",
-      "prompt": "Use the monorepo context governance skill to create a bounded-context documentation package for Orders. The Orders context owns order intake, order state transitions, and the order_placed event. It does not own pricing or shipping. Source code lives in services/orders and tests live in services/orders/tests.",
-      "expected_output": "A context package plan or files for Orders that include manifest.yaml, guide.md, context-map.yaml, a published order_placed contract location, explicit non-responsibilities for pricing and shipping, and validation guidance.",
+      "prompt": "Use the monorepo context governance skill to create a governed knowledge package for Orders in a fresh repository. The Orders context owns order intake, order state transitions, and the order_placed event. It does not own pricing or shipping. Source code lives in services/orders and tests live in services/orders/tests.",
+      "expected_output": "A greenfield Tier 0/1 bundle: docs/index.md with okf_version, docs/OWNERS, and one docs/contexts/orders/context.md whose frontmatter declares id/owner/status/entrypoints and the published order_placed contract, with prose body sections for owns/does-not-own, plus a contracts/published/order_placed/ folder with contract.md and a schema file, and the validate_bundle.py command.",
       "files": [],
       "assertions": [
-        "The output treats Orders as a bounded-context knowledge package, not just a code folder.",
-        "The manifest includes responsibilities, non-responsibilities, dependencies or forbidden dependencies, contracts, and entrypoints.",
-        "The order_placed event is represented as a published contract owned by Orders.",
-        "Pricing and shipping are explicitly excluded from Orders ownership.",
-        "The output includes or references a context-map.yaml with closed-vocabulary task intents."
+        "The output creates a single context.md (frontmatter facts + prose guide body) and does NOT create manifest.yaml, guide.md, or a context README.md.",
+        "order_placed is a published contract: declared in context.md frontmatter and given a contracts/published/order_placed/ folder with contract.md plus an authoritative schema file.",
+        "Pricing and shipping exclusions are prose in the body (what this context does not own), not YAML lists.",
+        "Every created non-reserved markdown document carries YAML frontmatter with a type field; the bundle root index.md declares okf_version.",
+        "The output does not require context-map.yaml and does not use a closed intent vocabulary; it mentions running scripts/validate_bundle.py."
       ]
     },
     {
       "id": "migrate-legacy-orders-doc",
-      "prompt": "Use the monorepo context governance skill to classify and migrate the legacy Orders documentation in evals/files/legacy-orders-doc.md into the governed docs/contexts model. Produce the migration classification and target artifact plan.",
-      "expected_output": "A migration classification that separates identity, responsibility, workflow, runbook, playbook, ADR, published contract, consumed contract, duplicate, obsolete, unknown, and conflict material before proposing target artifacts.",
+      "prompt": "Use the monorepo context governance skill to classify and migrate the legacy Orders documentation in evals/files/legacy-orders-doc.md into a governed knowledge bundle. Produce the classification and target artifact plan.",
+      "expected_output": "A per-section classification assigning each section an OKF type (BoundedContext fact, Contract, Workflow, Runbook, Playbook, ADR, Reference) or a disposition (duplicate, obsolete, unknown, conflict) before proposing target artifacts, with the order_placed shape becoming a published contract and the fraud-review question landing in open questions.",
       "files": [
         "evals/files/legacy-orders-doc.md"
       ],
       "assertions": [
-        "The output classifies source sections before moving or rewriting them.",
-        "The output does not copy the old document structure mechanically.",
-        "The output sends behavior to workflows, diagnosis to runbooks, deliberate change steps to playbooks, and rationale to ADRs.",
-        "The output treats consumed contracts as references rather than copied schema bodies.",
-        "The output captures unknowns or conflicts instead of silently resolving them."
+        "The output classifies every section (type or disposition) before moving or rewriting anything, and does not copy the old document structure mechanically.",
+        "Ownership/responsibility/non-responsibility facts route to context.md (frontmatter where lintable, body prose otherwise); behavior routes to a Workflow; the stuck-worker section routes to a Runbook; the new-order-state steps route to a Playbook; the pull-based rationale routes to an ADR.",
+        "The order_placed JSON shape becomes a published contract under contracts/published with a versioned schema, not an inline snippet.",
+        "The old deployment note is classified obsolete or unknown rather than migrated as-is, and the fraud-review question is captured as an open question instead of silently resolved.",
+        "The plan is incremental (Tier 0 first, contracts at Tier 1) and does not demand full-repo migration or CI tooling up front."
       ]
     },
     {
-      "id": "review-flawed-context",
-      "prompt": "Use the monorepo context governance skill to review the flawed Billing context package in evals/files/flawed-billing-context. Report errors first, then warnings, and include the validator command you would run.",
-      "expected_output": "A review that identifies structural and governance issues in the Billing package, especially copied consumed schema bodies, missing context-map guardrails, weak manifest ownership or contract declarations, and unreachable documents.",
+      "id": "review-flawed-bundle",
+      "prompt": "Use the monorepo context governance skill to review the flawed Billing knowledge bundle in evals/files/flawed-billing-bundle/docs. Report errors first, then warnings, and include the validator command you would run.",
+      "expected_output": "A review that identifies the enforced-rule violations (id/directory mismatch, invalid status, owner not in OWNERS, consumed contract declared with a ref path, schema body copied under contracts/consumed, consumed id with no publisher, published contract folder missing contract.md, deprecated contract without replacement, markdown without type frontmatter) and separates them from advisory findings (v1 guide.md artifact, root index.md missing okf_version).",
       "files": [
-        "evals/files/flawed-billing-context/manifest.yaml",
-        "evals/files/flawed-billing-context/guide.md",
-        "evals/files/flawed-billing-context/context-map.yaml",
-        "evals/files/flawed-billing-context/contracts/consumed/orders-order-placed.md",
-        "evals/files/flawed-billing-context/references/random-note.md"
+        "evals/files/flawed-billing-bundle/docs/index.md",
+        "evals/files/flawed-billing-bundle/docs/OWNERS",
+        "evals/files/flawed-billing-bundle/docs/contexts/billing/context.md",
+        "evals/files/flawed-billing-bundle/docs/contexts/billing/contracts/consumed/orders-order-placed.md",
+        "evals/files/flawed-billing-bundle/docs/contexts/billing/contracts/published/invoice_created/v1.schema.json",
+        "evals/files/flawed-billing-bundle/docs/contexts/billing/references/random-note.md",
+        "evals/files/flawed-billing-bundle/docs/contexts/billing/guide.md",
+        "evals/files/flawed-billing-bundle/docs/contexts/billing/workflows/billing-flow.md"
       ],
       "assertions": [
-        "The output reports errors before warnings.",
-        "The output flags copied schema bodies under contracts/consumed as invalid.",
-        "The output flags missing or weak context-map guardrails.",
-        "The output checks whether documents are reachable from guide.md or context-map.yaml.",
-        "The output includes the validate_context_package.py command."
+        "The output reports errors before warnings and includes the scripts/validate_bundle.py command.",
+        "The output flags the copied schema body under contracts/consumed and the ref: path on the consumed declaration as violations (consume by id + version only).",
+        "The output flags the id/directory-name mismatch, the invalid status value, the owner team missing from docs/OWNERS, and the deprecated published contract lacking a replacement.",
+        "The output flags markdown without type frontmatter (references/random-note.md, guide.md) and identifies guide.md as a v1 artifact to merge into context.md.",
+        "The output distinguishes enforced-rule violations (blocking) from advisory findings, and does not fail the bundle for lacking context-map.yaml."
       ]
     }
   ]

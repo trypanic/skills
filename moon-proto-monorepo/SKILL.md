@@ -157,7 +157,7 @@ Concrete corrections to reasonable-but-wrong assumptions. Read before acting:
 
 ### "I need to add X" → where it goes
 
-```
+```text
 Bump a tool version (go/node/rust/…)   → edit the .prototools pin. Done.
 Add a tool the repo lacks              → .prototools pin; if not a built-in,
                                          add a [plugins.tools] locator first.
@@ -178,7 +178,7 @@ A task needs workspace-root paths       → runFromWorkspaceRoot: true.
 
 ### "Why isn't moon doing X" → diagnosis
 
-```
+```text
 Project not discovered      → glob doesn't match its path (literal, not recursive),
                               or no glob/source covers it. Check moon query projects.
 Task not inherited          → the tasks file has no inheritedBy, or the condition

@@ -1,4 +1,4 @@
 interface:
-  display_name: "Monorepo Context Governance"
-  short_description: "Govern bounded-context docs"
-  default_prompt: "Use $monorepo-context-governance to create a context package for a microservices monorepo."
+  display_name: "Context Knowledge Governance"
+  short_description: "Govern OKF knowledge bundles"
+  default_prompt: "Use $monorepo-context-governance to create or govern an OKF-aligned knowledge bundle (context.md packages, contracts, ADRs) for this repository."

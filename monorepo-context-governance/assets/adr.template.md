@@ -1,42 +1,33 @@
-# ADR-<id>: <Decision title>
+---
+type: ADR
+id: ADR-<NNNN>
+title: <short decision title>
+status: proposed                 # proposed | accepted | superseded | rejected
+date: <YYYY-MM-DD>
+supersedes: null                 # ADR id this one replaces, if any
+superseded_by: null              # set on the OLD ADR when superseded
+---
 
-Status: proposed
-Date: <YYYY-MM-DD>
-Context: <context-id>
-
-## Decision
-
-<State the decision in one short paragraph.>
+# ADR-<NNNN> — <Short decision title>
 
 ## Context
 
-<Explain the problem, constraints, and affected contexts/contracts.>
+<The forces at play: domain facts, constraints, and the problem requiring a decision. State what must be true for the decision to hold.>
 
-## Options Considered
+## Decision
 
-1. <Option A>
-2. <Option B>
-3. <Option C>
+<The decision, stated actively. Include the considered alternatives and why they lost.>
 
 ## Consequences
 
-Positive:
-- <Consequence>
+<What becomes easier, what becomes harder, what risks are accepted.>
 
-Negative:
-- <Consequence>
+## Affected artifacts
 
-## Affected Artifacts
+<Links to the context.md frontmatter facts, contracts, or workflows this decision changes. Update them in the same change set.>
 
-- `manifest.yaml`
-- `context-map.yaml`
-- `contracts/published/...`
-- `workflows/...`
-
-## Supersedes
-
-- None
-
-## Superseded By
-
-- None
+<!--
+Accepted ADRs are immutable (rule E8). To change the decision: create a new ADR,
+mark this one superseded, link both directions.
+One decision per file.
+-->

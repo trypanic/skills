@@ -1,64 +1,38 @@
 # ADR Policy
 
-## Reading Map
+## Required
 
-TL;DR: Use ADRs for boundary, ownership, dependency, shared-kernel, contract-architecture, breaking-contract, and major strategy decisions. Accepted ADRs are immutable.
+An ADR is required for:
 
-Read:
-
-- "ADR required" before making structural changes.
-- "ADR not required" before creating unnecessary decision records.
-- "Immutability" when changing an accepted decision.
-
-## ADR Required
-
-Require an ADR for:
-
-- creating a bounded context;
-- retiring a bounded context;
-- splitting a context;
-- merging contexts;
+- creating, retiring, splitting, merging, or renaming a bounded context;
 - changing context ownership;
-- changing context identity;
 - adding a new cross-context dependency;
 - changing dependency direction or ownership;
-- introducing a shared kernel;
+- introducing a shared kernel (plus approval from at least two affected owners);
 - making a breaking semantic contract change;
-- changing contract architecture;
+- changing contract architecture (e.g. schema format, envelope strategy);
 - changing a major technology strategy;
 - superseding an accepted ADR.
 
-## ADR Not Required
+## Not Required
 
-Do not require an ADR for:
-
-- adding an optional field to a contract when backward compatible;
-- correcting typos;
-- improving examples;
+- adding a backward-compatible optional field to a contract;
+- correcting typos or improving examples;
 - updating a non-contractual workflow description;
-- adding a runbook for a known failure mode;
-- adding a local playbook;
+- adding a runbook or a local playbook;
 - changing implementation under stable contracts;
 - adding tests;
 - refactoring without boundary or behavior change.
 
 ## Immutability
 
-Accepted ADRs are immutable.
+Accepted ADRs are immutable (enforced rule E8). If the decision changes:
 
-If the decision changes:
+1. create a new ADR;
+2. mark the old one `status: superseded` and set `superseded_by`;
+3. set `supersedes` on the new one — link both directions;
+4. update affected `context.md` frontmatter, contracts, and workflows in the same change set.
 
-1. Create a new ADR.
-2. Mark the old ADR as superseded.
-3. Link both directions.
-4. Update affected manifests, contracts, and workflows.
+ADRs explain **why** a decision was made — never current state. Current declared facts live in `context.md` frontmatter; if an ADR is the only place a current fact exists, extract the fact.
 
-## Drafting Rules
-
-- Keep one decision per ADR.
-- State status clearly: proposed, accepted, superseded, rejected.
-- Link affected context ids, contracts, workflows, and prior ADRs.
-- Capture alternatives considered only when they explain the trade-off.
-- Do not use ADRs as current-state manifests; update `manifest.yaml` for current facts.
-
-Use `assets/adr.template.md` for new ADRs.
+Use `assets/adr.template.md`. One decision per file. Technology choices (language, framework, broker, schema format, codegen, validation, runtime) are always ADRs — never hardcoded into the knowledge model.

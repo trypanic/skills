@@ -1,139 +1,57 @@
 # Validation Checklists
 
-## Reading Map
+Run `python3 scripts/validate_bundle.py <path>` first; it covers the statically checkable subset. These checklists cover what the script cannot see. Report errors before warnings; distinguish enforced-rule violations (blocking) from advisory findings (recommendations). Check only up to the context's declared tier — do not fail a Tier 0 context on Tier 2 expectations.
 
-TL;DR: Review package integrity, contract integrity, documentation purpose, agent readiness, code synchronization, and migration quality. Treat errors before warnings.
+## Tier 0 — Context Integrity
 
-Read:
+- [ ] Every context directory has a `context.md` with `type: BoundedContext`.
+- [ ] `id` matches the directory name and is stable.
+- [ ] `owner.team` resolves in `docs/OWNERS`.
+- [ ] `status` is one of proposed/active/deprecated/retired.
+- [ ] Body has real prose for "owns" / "does not own" (not YAML restated).
+- [ ] Bundle root `docs/index.md` declares `okf_version`.
+- [ ] Every non-reserved `.md` has frontmatter with a non-empty `type`.
+- [ ] No v1 artifacts (`manifest.yaml`, `guide.md`, context `README.md`).
 
-- "Governance rules" when reviewing enforceability.
-- "Evaluation checklist" before finalizing a package or migration.
-- "Validator" when checking files on disk.
+## Tier 1 — Contract Integrity
 
-## Governance Rules
+- [ ] Every published contract: declared in frontmatter, has `contract.md` + schema file, has kind/version/stability.
+- [ ] Contract ids are globally unique; no operation declared both standalone and inside an `api`.
+- [ ] Every consumed contract is id + version only — no `ref` paths, no schema bodies anywhere under `contracts/consumed/`.
+- [ ] Every consumed id resolves to a publisher in the bundle.
+- [ ] Deprecated contracts declare `replacement` and a retirement target.
+- [ ] Breaking changes include a generated `affected_consumers` impact declaration and an ADR.
+- [ ] Schema-format ADR exists.
+- [ ] Domain models, ports, and adapters are not exposed as contracts.
 
-Each governance rule needs a check. If no automated check exists, mark it advisory until lint, CI, CODEOWNERS, or review enforcement exists.
+## Tier 2 — Enforcement
 
-| Rule | Check |
-| --- | --- |
-| Every context has a manifest. | Lint. |
-| Every manifest owner resolves in `docs/OWNERS`. | Lint. |
-| Context identity is immutable unless ADR plus migration plan exist. | Field-change lint. |
-| No cross-context dependency except via contracts. | Dependency graph lint. |
-| No cross-context links to internals as authoritative references. | Link-graph lint. |
-| Consumed contracts are references only. | Schema-body detector. |
-| Published contract shape changes require SemVer bump. | Schema diff plus version check. |
-| Breaking contract changes require impact declaration. | Contract CI. |
-| Deprecated contracts require replacement and retirement target. | Manifest/schema lint. |
-| Boundary, ownership, or dependency changes require ADR. | Changed-path rule. |
-| Accepted ADRs are immutable. | ADR state lint. |
-| `entrypoints.source` resolves. | Path lint. |
-| Every document is reachable from `guide.md` or `context-map.yaml`. | Reachability lint. |
-| References are not orphaned. | Link lint. |
-| Generated indexes are not manually edited. | CI generation diff. |
-| Shared kernel additions require ADR and multi-owner approval. | CODEOWNERS plus ADR check. |
-| Contractual observability signals require owner/version/stability. | Signal lint. |
-| Non-contractual signals are not treated as stable dependencies. | Review rule or lint. |
-| Code changes affecting declared knowledge update source of truth or declare no impact. | PR checklist, agent rule, or CI policy. |
-| Existing docs migration classifies source material before moving. | Migration checklist. |
+- [ ] E1–E10 wired in CI for this context (or explicitly listed as pending).
+- [ ] `registry.yaml` and `index.md` files are generated and CI-diffed, never hand-edited.
+- [ ] Accepted ADRs immutable in CI (E8).
+- [ ] E10 anti-drift gate active: code changes under `entrypoints.source` require a docs diff or a `Knowledge-Impact: none` trailer.
+- [ ] `entrypoints.source` / `entrypoints.tests` resolve (`--repo-root`).
 
-## Evaluation Checklist
+## Tier 3 — Agent Readiness
 
-### Context Integrity
+- [ ] `AGENTS.md` / `CLAUDE.md` contains the resolution + classification procedure (see `assets/agents-instructions.template.md`).
+- [ ] `context-map.yaml` (if present): free-string task patterns, read allowlists, symptom → runbook routes, guardrails. No closed intent vocabulary, no do-not-read lists.
+- [ ] Contract-changing tasks route to versioning rules; incident tasks route to runbooks and observability.
 
-- [ ] Every context has a `manifest.yaml`.
-- [ ] Every context has a stable `identity.name`.
-- [ ] Every owner resolves in `docs/OWNERS`.
-- [ ] Every context has clear responsibilities.
-- [ ] Every context has explicit non-responsibilities for common ambiguity areas.
-- [ ] Every dependency is declared.
-- [ ] Every dependency is via contract.
-- [ ] No context depends on another context's internals.
+## Documentation Quality (advisory)
 
-### Contract Integrity
-
-- [ ] Every published contract has an owner.
-- [ ] Every published contract has a version.
-- [ ] Every published contract has a schema.
-- [ ] Every consumed contract is a reference.
-- [ ] No consumed contract duplicates a schema body.
-- [ ] Breaking changes include impact.
-- [ ] Deprecated contracts include replacement and retirement target.
-- [ ] Affected consumers can be derived from manifests.
-
-### Documentation Integrity
-
-- [ ] Every document has one primary purpose.
-- [ ] Every document is reachable from `guide.md` or `context-map.yaml`.
-- [ ] No reference is orphaned.
-- [ ] No generated index is manually edited.
+- [ ] One primary purpose per document; diagnosis in runbooks, deliberate change in playbooks, rationale in ADRs.
+- [ ] Long documents (>~300 lines) start with a reading map.
+- [ ] Workflows reference contracts; they never inline schema bodies.
+- [ ] References are linked from canonical docs, not free-floating.
 - [ ] No source-of-truth fact appears authoritatively in two places.
-- [ ] Long documents include a reading map.
-- [ ] Workflows do not inline schemas.
-- [ ] Runbooks are not mixed with playbooks.
-- [ ] ADRs explain decisions, not current state.
+- [ ] `log.md` entries exist for meaningful knowledge changes.
 
-### Agent Readiness
+## Migration Quality
 
-- [ ] Every mature context has a usable `context-map.yaml`.
-- [ ] Intents use the closed vocabulary.
-- [ ] Symptoms are context-specific.
-- [ ] Guardrails are explicit.
-- [ ] Fix/change/refactor flows define minimum read sets.
-- [ ] Contract-changing tasks route to versioning rules.
-- [ ] Incident tasks route to runbooks and observability.
-- [ ] Agent execution rules exist in `AGENTS.md`, `CLAUDE.md`, or equivalent.
-
-### Code Synchronization
-
-- [ ] Code entrypoints resolve.
-- [ ] Test entrypoints resolve.
-- [ ] PR process asks whether declared knowledge is affected.
-- [ ] Contract changes update schemas.
-- [ ] Workflow changes update workflow docs.
-- [ ] Ownership, boundary, and dependency changes update manifest and ADR if needed.
-- [ ] Ambiguities are surfaced instead of silently resolved.
-
-### Migration Quality
-
-- [ ] Existing docs were classified before moving.
-- [ ] Duplicates were removed.
-- [ ] Obsolete docs were deleted or archived.
-- [ ] Unknowns were captured in `open-questions.md`.
-- [ ] Conflicts were classified.
-- [ ] Migration did not copy old structure into new folders without normalization.
-
-## Cross-Context Reading Rule
-
-There are two kinds of cross-context reading:
-
-```text
-Normative reading:
-Using another context's knowledge as source of truth or dependency.
-
-Investigative reading:
-Temporarily inspecting another context to understand a problem.
-```
-
-Rules:
-
-- Forbid normative reading of another context's internals.
-- Base dependencies only on published contracts or integration docs.
-- Allow investigative reading when useful, but do not let it create an architectural dependency.
-- If a consumer needs stable knowledge from another context, require the provider to publish a contract or integration document.
-
-## Validator
-
-Run:
-
-```bash
-python3 scripts/validate_context_package.py docs/contexts/<context-id>
-```
-
-Use structured output for automation:
-
-```bash
-python3 scripts/validate_context_package.py --format json docs/contexts/<context-id>
-```
-
-The validator catches structural errors and common warnings. It is intentionally lightweight and dependency-free; use it as a first pass, then apply the checklists above for governance judgment.
+- [ ] Every migrated document was classified (type or disposition) before moving.
+- [ ] Duplicates replaced with links; obsolete material deleted or archived outside `docs/`.
+- [ ] Unknowns captured in `## Open questions`.
+- [ ] Conflicts classified with the taxonomy (never resolved by recency).
+- [ ] Old structure not copied mechanically into new folders.
+- [ ] Files moved with `git mv` (history preserved).

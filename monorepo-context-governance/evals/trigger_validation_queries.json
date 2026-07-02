@@ -1,6 +1,6 @@
 [
   {
-    "query": "Review this docs/contexts/payments package for governance problems: consumed contracts, guide reachability, ADR requirements, and context-map guardrails.",
+    "query": "Review this docs/contexts/payments package for governance problems: consumed contracts, frontmatter types, ADR requirements, and owner resolution.",
     "should_trigger": true
   },
   {
@@ -13,6 +13,10 @@
   },
   {
     "query": "The Product docs say Pricing owns discounts, but Orders has workflow steps that redefine discount rules. Help resolve the source-of-truth conflict.",
+    "should_trigger": true
+  },
+  {
+    "query": "Migrate our type-first docs tree (decisions/, domain/, refs/) into context-first knowledge packages, one context at a time.",
     "should_trigger": true
   },
   {
