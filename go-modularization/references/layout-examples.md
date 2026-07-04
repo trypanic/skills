@@ -285,6 +285,75 @@ func toAssignment(a *coordinationv1.AssignTask) domain.Assignment { ... }
 func (p *Pipeline) Run(ctx context.Context, a domain.Assignment) error
 ```
 
+## Streaming client — the consumer side of the same contract
+
+The client-side twin of the server split above. A service **consuming**
+another service's versioned stream contract is in the consumer role: the
+generated wire types are an external wire format like any other, translated in
+the stream-client adapter (`grpc/translation.go` beside `grpc/client.go`) —
+exactly mirroring the producer's server-side translation (R-25, R-26; see
+"Contracts on the consumer side" in placement-rules).
+
+```text
+internal/
+  grpc/
+    client.go                  # transport: dial, stream open, reconnect/backoff
+    translation.go             # wire <-> domain mapping (the consumer-side ACL)
+  domain/
+    stream_event.go            # sealed domain event sum the translation emits
+  ports/
+    coordination_port.go       # port speaks the domain sum, never a *pb type
+```
+
+The translation emits a **sealed domain event sum** — a closed set of domain
+variants, one per frame kind the consumer understands:
+
+```go
+// internal/domain/stream_event.go
+type StreamEvent interface{ isStreamEvent() }
+
+type TaskAssigned struct{ Assignment Assignment }
+type CreditGranted struct{ Credits int }
+type StreamClosed struct{ Reason CloseReason }
+
+func (TaskAssigned) isStreamEvent()  {}
+func (CreditGranted) isStreamEvent() {}
+func (StreamClosed) isStreamEvent()  {}
+```
+
+Before — the port speaks the wire type, so every consumer of the port must
+import the generated contract (`inner-imports-contracts` fires, R-25):
+
+```go
+// internal/ports/coordination_port.go
+import (
+    // FORBIDDEN (R-25): wire type in a port signature.
+    coordinationv1 ".../internal/contracts/coordination/v1"
+)
+
+type CoordinationStream interface {
+    Recv(ctx context.Context) (*coordinationv1.Event, error) // wire leaks inward
+}
+```
+
+After — de-wired: the port speaks the sealed sum; the adapter's translation
+maps each wire frame to exactly one variant:
+
+```go
+// internal/ports/coordination_port.go  (inner — no contract import)
+type CoordinationStream interface {
+    Recv(ctx context.Context) (domain.StreamEvent, error)
+}
+
+// internal/grpc/translation.go  (adapter — the only place a wire enum is
+// switched on)
+func toStreamEvent(f *coordinationv1.Event) (domain.StreamEvent, error) { ... }
+```
+
+The interactor switches on the domain sum (`switch e := ev.(type)`), never on
+a wire enum. A wire frame kind with no domain variant fails in translation —
+at the edge, not in the core.
+
 ## Migration filenames
 
 Valid (shared layout, sequence global per technology):

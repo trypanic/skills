@@ -54,3 +54,13 @@ Conventions: consumer = the audited repo (read-only acceptance target); gate evi
 - new surface: `decorative-state-machine` warning; ADR-30; R-30.
 - divergences: ADR-30's calibration divergence is deliberate and documented in the ADR itself.
 - notes-for-later: Phase 10 expects 2 consumer `decorative-state-machine` warnings; heuristic can false-negative when an unrelated repo file calls a same-named method on a different type (accepted, labeled heuristic).
+
+## Phase 5 — consumer contract hygiene + port quality — PASS (attempt 1) — 2026-07-04
+
+- commit: (this commit)
+- files: references/placement-rules.md (`### Contracts on the consumer side` — consumer-role restatement + four tells; `### Port quality` — capability shape, no-serialization-tags, mediation erratum, consumer-owned interface; "Two interactor shapes" clarified — no-prefix rule absolute, the mix IS the convention); references/layout-examples.md (`## Streaming client` — client.go + translation.go tree, sealed `StreamEvent` domain sum, before/after de-wired port signature); scripts/arch-checks.sh (`inner-imports-contracts` details grouped per service + guilty layer named, in-awk sort; new violation `tags-in-inner-layers` for `db:"`/`bson:"` under `ports/`/`domain/`, `json:` exempt); adr/README.md ADR-31; adr-cheatsheet.md R-31 appended, R-24 + R-27 rows spec-directed-updated (erratum). No SKILL.md edits (per spec).
+- gate: all common checks + cumulative asserts (P1/P3/P4/P5) passed. Fixture: `db:"id"` in ports → 1 violation; `json:`-only → clean; `db:` under data_repositories → clean. Consumer: 18 violations (17 + `tags-in-inner-layers` on the orchestrator ports row file); `inner-imports-contracts` still exactly 2 edges, adjacent, layers named (`ports`, `interactor`); warnings 3 unchanged. Orchestrator touch-ups: two "the coordination contract" phrases genericized to "another service's contract" (placement-rules + ADR-31) — evidence-flavored wording.
+- new surface: `tags-in-inner-layers` violation; grouped `inner-imports-contracts` detail format; ADR-31; R-31; R-24/R-27 row updates.
+- calibration: both articles fetched; no divergence (Graça "ports fit the core's needs, not tool APIs" = capability rule; Netflix consumer-side translation framing cited in ADR-31).
+- divergences: single-service repos report `service (root)` in grouped details; old-format inner-imports-contracts baselines won't match the new detail text (no checked-in baseline exists — non-issue).
+- notes-for-later: Phase-10 consumer expectation now 18 violations + 3 warnings. SKILL.md gotcha "Pick one filename convention per service" (line ~146) and the Verify check-list (no `tags-in-inner-layers`, no grouped-format mention) need the Phase-10 coherence pass.

@@ -56,12 +56,12 @@ Restore trust before adding new checks. File: `scripts/arch-checks.sh`.
 
 ## Phase 5 — Consumer-side contract hygiene + port quality (audit 12.3, 12.4, 12.5; evidence C-1, O-6, O-8, W-11)
 
-- [ ] 5.1 placement-rules.md Contracts section: add consumer-role restatement + the four "tells" (audit 12.3 wording).
-- [ ] 5.2 layout-examples.md: add the stream-client consumer example (client.go + translation.go + sealed domain event sum; before/after de-wired port signature) mirroring the existing server example.
-- [ ] 5.3 arch-checks: group `inner-imports-contracts` output per service and name the guilty layer.
-- [ ] 5.4 placement-rules.md Ports section: capability-shape rule, no-serialization-tags rule, the mediation erratum, consumer-owned-interface rule for interactor↔interactor seams (audit 12.4 a–d).
-- [ ] 5.5 arch-checks: `tags-in-inner-layers` check (`db:`/`bson:` struct tags under `ports/` or `domain/`).
-- [ ] 5.6 placement-rules.md R-24: apply audit 12.5 clarification (no-prefix rule absolute; the mix is the convention).
+- [x] 5.1 placement-rules.md Contracts section: add consumer-role restatement + the four "tells" (audit 12.3 wording).
+- [x] 5.2 layout-examples.md: add the stream-client consumer example (client.go + translation.go + sealed domain event sum; before/after de-wired port signature) mirroring the existing server example.
+- [x] 5.3 arch-checks: group `inner-imports-contracts` output per service and name the guilty layer.
+- [x] 5.4 placement-rules.md Ports section: capability-shape rule, no-serialization-tags rule, the mediation erratum, consumer-owned-interface rule for interactor↔interactor seams (audit 12.4 a–d).
+- [x] 5.5 arch-checks: `tags-in-inner-layers` check (`db:`/`bson:` struct tags under `ports/` or `domain/`).
+- [x] 5.6 placement-rules.md R-24: apply audit 12.5 clarification (no-prefix rule absolute; the mix is the convention).
 - **Acceptance:** tag check flags a fixture `ports/x_port.go` with a `db:"col"` tag; R-24 section contains the carve-out sentence; cheatsheet R-27 row updated to include the erratum.
 
 ## Phase 6 — Anemic interactors + wire-model-in-domain (audit 12.6, 12.8; evidence O-5, O-4)

@@ -71,9 +71,17 @@ interactor/
   reconnector.go           # process manager (session-lifetime loop)
 ```
 
-Pick **one** convention per service and apply it to both shapes consistently —
-do not mix `interactor_pipeline.go` with `processor.go` in the same service. A
-process manager's private helper state (a ledger, an emit sink, a drain gate)
+The "pick one convention per service" sentence governs the choice of **role
+names** only — settle on one role-naming style and stick to it (do not call the
+same shape `pipeline.go` in one place and `scrape_loop.go` in another). The
+no-prefix rule for process managers is **absolute**: `scheduler.go`, never
+`interactor_scheduler.go` — in every service, with no per-service opt-out.
+Carve-out: a service always mixes prefixed use-case files
+(`interactor_order.go`) with unprefixed role-named process managers
+(`scheduler.go`) in one flat `interactor/` folder — that mix **is** the
+convention, not an inconsistency to fix.
+
+A process manager's private helper state (a ledger, an emit sink, a drain gate)
 lives beside it in `interactor/` as an unexported type; it is not a use case and
 gets no `interactor_` file of its own.
 
@@ -289,6 +297,32 @@ holding the stream + sink seams). Pick one convention per service; do not mix.
 contract (versioned `internal/contracts/**/v<N>`, any `*.pb.go`) — that is
 adapter-only (SKILL.md forbidden-imports). Translate at the adapter boundary.
 
+### Port quality
+
+"Speaks domain types" is necessary but not sufficient. Four rules (ADR-31):
+
+- **Capability shape.** Ports are shaped by the *capability the interactor
+  needs*, not by the adapter's surface. A port whose method set mirrors a
+  repository's query/procedure inventory one-to-one, or whose doc comments
+  name the persistence technology, is an adapter interface promoted inward —
+  regroup by capability and describe behavior ("atomically claims the next
+  unit of work"), not mechanism.
+- **No serialization tags.** No serialization metadata in `ports/` or
+  `domain/`: a struct with `db:`/`bson:`/wire tags is an adapter row/DTO —
+  keep it in the adapter and map. `json:` tags are permitted only in
+  adapter-local DTOs and `contracts/` packages. `scripts/arch-checks.sh`
+  flags `db:`/`bson:` tags under `ports/`/`domain/` (`tags-in-inner-layers`).
+- **Mediation erratum.** "No port without an interactor consumer" applies to
+  *outbound capability* ports only; the earlier claim that inbound adapters
+  never need ports is wrong. Two other seams are sanctioned: push/sink/trigger
+  ports implemented by a *driving* adapter (Port shapes, above), and
+  **adapter→port→adapter mediation** — an inbound handler invokes a capability
+  implemented by another adapter, with no business policy in between.
+- **Consumer-owned interface.** A seam between two interactors is not a port.
+  When one interactor needs another, the **consumer** declares the small
+  (typically unexported) interface it needs, beside itself in `interactor/`;
+  the provider satisfies it. No shared fat interface.
+
 ### Translation / Anti-Corruption Layer (ACL)
 
 Domain↔external-wire mapping is an adapter responsibility — keep it beside the
@@ -304,6 +338,30 @@ The ACL is **pure** — wire/domain in, the other out, no I/O. The HTTP/stream c
 lives in a sibling client file. Forbidden `mapper/` → an adapter-local
 translation file; forbidden `dto/` → the wire structs live in the adapter (or
 `internal/contracts/` when shared by 2+ services).
+
+### Contracts on the consumer side
+
+The adapter-only rule for generated contracts binds **each service in each
+role**. A service *consuming* another service's versioned wire contract treats
+it exactly like any external wire format: translate at the adapter edge,
+domain types inward. The consumer owns a domain vocabulary for every frame it
+sends or receives and translates in its stream-client adapter
+(`grpc/translation.go` beside `grpc/client.go`) — exactly mirroring the
+producer's server-side translation. Worked example (incl. the sealed domain
+event sum and the de-wired port signature): "Streaming client" in
+[`layout-examples.md`](layout-examples.md).
+
+Tells that the consumer-side seam is missing:
+
+- port signatures naming generated types;
+- frame constructors in `interactor/`;
+- a wire enum compared or switched on outside the adapter;
+- a second outbound adapter importing another service's contract because port
+  signatures force it through.
+
+`scripts/arch-checks.sh` reports `inner-imports-contracts` grouped per service
+and names the guilty layer (`ports`/`interactor`/`domain`), so asymmetric
+drift — one service clean, its sibling colonized — is legible in the output.
 
 `_test.go` lives next to the code under test; `testdata/` allowed anywhere (Go
 convention). Mocks of ports: `ports/<context>_port_mock.go`. Test and generated

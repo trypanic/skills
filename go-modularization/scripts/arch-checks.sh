@@ -36,8 +36,13 @@ module topology (single root go.mod, or go.work with every module dir
 registered under `use`; orphan multi-module flagged); nine import invariants
 (layer->adapter, inner->generated-contracts, cross-service internal,
 kernel<->contracts, contracts->business, go-pkgs->internal, adapter->adapter,
-imports-cmd); one cmd/main.go per service (services with no non-test .go
-files — non-Go services — are skipped); no Go under scripts/; migration
+imports-cmd) — inner-imports-contracts details are grouped per service and
+name the guilty layer (service <svc> layer <ports|interactor|domain>: edge);
+one cmd/main.go per service (services with no non-test .go
+files — non-Go services — are skipped); no Go under scripts/; serialization
+struct tags (db:"/bson:") in non-test .go files under ports/ or domain/
+(tags-in-inner-layers — the tagged row/DTO type belongs in the owning
+adapter); migration
 filename grammar + up/down pairing (a grammar-failing file with a script
 extension under migrations/ is flagged misplaced-script instead);
 promotion-threshold counts grouped per context stem (report-only heuristic
@@ -170,6 +175,7 @@ if [ "$run_go" -eq 1 ]; then
     add_v "$check" "$detail"
   done < <(printf '%s\n' "$dump" | awk -F'\t' -v root="$root" '
     function svc(p,   s){ if (!match(p, /(^|\/)services\//)) return ""; s = substr(p, RSTART+RLENGTH); sub(/\/.*/, "", s); return s }
+    function layer(p){ if (p ~ "/domain(/|$)") return "domain"; if (p ~ "/interactor(/|$)") return "interactor"; if (p ~ "/ports(/|$)") return "ports"; return "inner" }
     function adapter(p,   a){ if(p !~ "/(api|consumer|cli|grpc|ws|sse|graphql|data_repositories|external_services|producer|storage)(/|$)") return ""; a=p; sub(".*/(internal/)?","",a); sub("/.*","",a); return a }   # known limitation: last-segment extraction treats promoted provider subfolders as the adapter identity
     {
       ip=$1; rel=$2; sub("^"root"/","",rel); sub("^"root"$","",rel)
@@ -184,7 +190,7 @@ if [ "$run_go" -eq 1 ]; then
           im=imps[i]; if(!(im in relOf)) continue   # only in-repo packages are keys
           imr=relOf[im]; ims=svc(imr); ima=adapter(imr)
           if (inner && imr ~ "/(api|consumer|cli|grpc|ws|sse|graphql|data_repositories|external_services|producer|storage)(/|$)") print "layer-imports-adapter\t"ipr" -> "imr
-          if (inner && imr ~ "(^|/)contracts/(.*/)?v[0-9]+(/|$)") print "inner-imports-contracts\t"ipr" -> "imr
+          if (inner && imr ~ "(^|/)contracts/(.*/)?v[0-9]+(/|$)") { sname=(ips!="" ? ips : "(root)"); iic[++niic]="inner-imports-contracts\tservice " sname " layer " layer(ipr) ": " ipr " -> " imr }
           if (ips!="" && ims!="" && ips!=ims && imr ~ "/internal(/|$)") print "cross-service-internal\t"ipr" -> "imr
           if (ipr ~ "(^|/)internal/kernel(/|$)" && imr ~ "(^|/)internal/contracts(/|$)") print "kernel-imports-contracts\t"ipr" -> "imr
           if (ipr ~ "(^|/)internal/contracts(/|$)" && imr ~ "(^|/)internal/kernel(/|$)") print "contracts-imports-kernel\t"ipr" -> "imr
@@ -194,6 +200,11 @@ if [ "$run_go" -eq 1 ]; then
           if (imr ~ "(^|/)cmd(/|$)") print "imports-cmd\t"ipr" -> "imr
         }
       }
+      # inner-imports-contracts is emitted last, sorted (insertion sort — POSIX
+      # awk has no builtin), so each service'\''s edges are adjacent in the
+      # report. One line per import edge; only the detail text is grouped.
+      for(a=2;a<=niic;a++){ t=iic[a]; b=a-1; while(b>=1 && iic[b]>t){ iic[b+1]=iic[b]; b-- } iic[b+1]=t }
+      for(a=1;a<=niic;a++) print iic[a]
     }')
 fi
 
@@ -212,6 +223,19 @@ done
 # 6. No Go files under scripts/ (bash/python/sql only).
 while IFS= read -r f; do [ -n "$f" ] && add_v "go-under-scripts" "$f"; done < <(
   find . \( -path ./vendor -o -path ./.git \) -prune -o -path '*/scripts/*' -name '*.go' -print)
+
+# 6b. No serialization tags in inner layers: a non-test .go file under any
+#     ports/ or domain/ path component carrying a db:"/bson:" struct tag holds
+#     an adapter row/DTO promoted inward (placement-rules "Port quality").
+#     One violation per offending file. json: tags are not flagged (permitted
+#     in adapter-local DTOs and contracts/ packages).
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  grep -Eq '`([^`]*[^[:alnum:]_])?(db|bson):"[^`]*`' "$f" 2>/dev/null \
+    && add_v "tags-in-inner-layers" "$f: serialization tag in inner layer (move the tagged row/DTO type to the owning adapter)"
+done < <(find . \( -path ./vendor -o -path ./.git -o -name node_modules \) -prune -o \
+           -type f -name '*.go' ! -name '*_test.go' \
+           \( -path '*/ports/*' -o -path '*/domain/*' \) -print 2>/dev/null)
 
 # 7. Migration filename grammar (closed verb set).
 verbs='(create|add|drop|alter|rename|backfill|fix|refactor|seed)'
