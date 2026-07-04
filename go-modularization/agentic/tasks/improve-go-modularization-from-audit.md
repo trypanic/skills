@@ -73,10 +73,10 @@ Restore trust before adding new checks. File: `scripts/arch-checks.sh`.
 
 ## Phase 7 — Service boundaries reference (audit 12.10; evidence B-2…B-9, C-4, C-5, C-6)
 
-- [ ] 7.1 Create `references/service-boundaries.md` with the seven rules (durable-state privacy; agreed-values ladder; enforcement locus + coupling table; enum-mirror exhaustiveness tests; dual-enforcement reconciliation; fault-locus taxonomies; one version authority) — lift audit 12.10 draft wording.
-- [ ] 7.2 SKILL.md: routing-table row + one-line invariant pointers; anti-pattern list gains "silent config mirror", "peer-datastore reach-in", "peer-enum modeling" (audit 14.8–14.10).
-- [ ] 7.3 arch-checks report-only checks: cross-service duplicate datastore-identifier string constants; identically-suffixed env-tag names under different service prefixes (emit as `boundary-review` items, clearly marked heuristic).
-- [ ] 7.4 New ADR in `adr/` for the scope extension (the skill now covers boundary rules, previously folder-layout only) + cheatsheet rows.
+- [x] 7.1 Create `references/service-boundaries.md` with the seven rules (durable-state privacy; agreed-values ladder; enforcement locus + coupling table; enum-mirror exhaustiveness tests; dual-enforcement reconciliation; fault-locus taxonomies; one version authority) — lift audit 12.10 draft wording.
+- [x] 7.2 SKILL.md: routing-table row + one-line invariant pointers; anti-pattern list gains "silent config mirror", "peer-datastore reach-in", "peer-enum modeling" (audit 14.8–14.10).
+- [x] 7.3 arch-checks report-only checks: cross-service duplicate datastore-identifier string constants; identically-suffixed env-tag names under different service prefixes (emit as `boundary-review` items, clearly marked heuristic).
+- [x] 7.4 New ADR in `adr/` for the scope extension (the skill now covers boundary rules, previously folder-layout only) + cheatsheet rows.
 - **Acceptance:** SKILL.md description frontmatter updated to mention service-boundary coverage (it drives skill triggering); heuristic checks produce zero findings on the clean fixture and ≥1 on a fixture with a duplicated collection-name constant.
 
 ## Phase 8 — Shared-tier occupancy + naming hygiene (audit 12.9; evidence B-6, W-6, S-4)

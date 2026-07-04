@@ -73,3 +73,13 @@ Conventions: consumer = the audited repo (read-only acceptance target); gate evi
 - calibration: both articles fetched; no divergence. Noted (ledger-only, no ADR this phase): Graça's "command handlers as mere wiring" is CQRS-bus dispatch, not a pass-through over an outbound port — compatible with enrich-or-delete.
 - divergences: none material.
 - notes-for-later: Phase-7 anti-pattern appends go after "Wire model in domain". Phase-10 coherence: SKILL.md gotcha "thin use cases" wording slightly in tension with the substance requirement — consider "focused use cases".
+
+## Phase 7 — service-boundaries reference — PASS (attempt 1) — 2026-07-04
+
+- commit: (this commit)
+- files: references/service-boundaries.md NEW (7 rules from audit 12.10: durable-state privacy; agreed-values ladder; one enforcement locus + coupling table; enum-mirror exhaustiveness tests; dual-enforcement reconciliation; fault-locus taxonomies; one version authority — links contract tiers + locus rules instead of restating); SKILL.md (frontmatter description extended in place — boundary coverage + 3 trigger phrases, value 1019 chars ≤1024; routing row appended; gotcha appended; 3 anti-patterns appended: silent config mirror, peer-datastore reach-in, peer-enum modeling; malformed table lines 19/23 untouched per plan); scripts/arch-checks.sh (section 8d `boundary-review` warnings ×2 heuristics: cross-service duplicate datastore-identifier consts; identically-suffixed env-tag names under different service prefixes); adr/README.md ADR-32 (scope extension, Netflix citation); adr-cheatsheet.md R-32.
+- gate: all common checks + full cumulative asserts (now incl. P7) passed. Fixture: duplicated `"orders"` collection const across two services → 1 boundary-review warning, clean fixture 0; env-suffix scenario 1 warning; exit reflects violations only. Consumer: 18 violations unchanged; warnings now 5 = prior 3 + 2 real `boundary-review` datastore-identifier findings (two shared collection-name constants declared in both services — audit B-2 class).
+- new surface: `boundary-review` warning (2 heuristic sub-checks); ADR-32; R-32; new frontmatter description.
+- calibration: both articles fetched; ADR-32 records one deliberate tightening (Graça permits read-only peer queries; the skill requires a declared version-pinned contract at service granularity).
+- divergences: description coverage phrase compact due to 1024-char limit; 8d(a) also matches typed consts and >2 services; 8d(b) also warns on identical full env values.
+- notes-for-later: Phase-10 consumer expectation now 18 violations + 5 warnings. SKILL.md Verify check-list lacks `boundary-review` (Phase-10). Audit 12.10's per-service SP-name-prefix check was out of Phase-7 scope — unimplemented, flag for future work.

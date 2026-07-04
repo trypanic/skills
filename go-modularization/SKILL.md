@@ -1,6 +1,6 @@
 ---
 name: go-modularization
-description: Use when placing, naming, moving, or promoting code in a Go monorepo or single-service repo, or reviewing folder layout — even when the user doesn't say "architecture". Decides which folder a new file, adapter, migration, handler, repository, or shared package belongs in, and whether to promote a file suffix to a subfolder. Covers flat hexagonal layers (api/consumer/cli → interactor → domain/ports ← data_repositories/storage/external_services/producer), the go-pkgs (never pkg/) convention, internal/contracts and internal/kernel, migration filenames with a closed verb set, and a forbidden folder-name list. Triggers on "new Go service", "where does this file go", "promote to subfolder", "add adapter", "set up migrations", "is this folder name allowed", or any new folder under services/<service>/, file under go-pkgs/ or internal/, or new migration. Not for non-Go projects or lint/observability config.
+description: Use when placing, naming, moving, or promoting code in a Go monorepo or single-service repo, or reviewing folder layout — even when the user doesn't say "architecture". Decides which folder a new file, adapter, migration, handler, repository, or shared package belongs in, and whether to promote a file suffix to a subfolder. Covers flat hexagonal layers (api/consumer/cli → interactor → domain/ports ← data_repositories/storage/external_services/producer), the go-pkgs (never pkg/) convention, internal/contracts and internal/kernel, migration filenames with a closed verb set, a forbidden folder-name list, and cross-service boundary rules. Triggers on "new Go service", "where does this file go", "promote to subfolder", "add adapter", "set up migrations", "is this folder name allowed", "shared collection/table name", "peer service enum", "config mirror", or any new folder under services/<service>/, file under go-pkgs/ or internal/, or new migration. Not for non-Go projects or lint/observability config.
 ---
 
 # go-modularization
@@ -24,6 +24,7 @@ This file holds the routing flowcharts and the invariants that apply to **every*
 | Need a worked example, full service tree, or counter-example | [`references/layout-examples.md`](references/layout-examples.md) |
 | Verify after scaffolding or restructuring                    | run [`scripts/arch-checks.sh`](scripts/arch-checks.sh)           |
 | Explain why a rule exists                                    | [`references/adr-cheatsheet.md`](references/adr-cheatsheet.md)   |
+| Service-boundary questions — peer datastores, shared values/enums/config, contract versions | [`references/service-boundaries.md`](references/service-boundaries.md) |
 
 Exception — no extra read needed when the flowchart below already gives the full canonical path for a single new file and no promotion threshold is near. For anything touching 2+ files, a rename, a promotion, or a new folder: read the task file first.
 
@@ -150,6 +151,7 @@ Concrete corrections to defaults that are wrong here. Read before acting — eac
 - A **port may be a `func` type** for a single-method seam (`type Emit func(...) error`); multi-method ports stay interfaces.
 - **Translation / ACL** (domain↔external-wire mapping) lives with the adapter that owns that wire format — inline, `<adapter>_translation.go`, or a named cluster inside a promoted adapter folder. Never a top-level `mapper/` or `dto/` (both forbidden). The mapping is pure (no I/O); the HTTP/stream call is its sibling.
 - A **state machine has exactly one enforcement locus** — domain-enforced or datastore-enforced, never both, never neither — declared at the transition table + service docs and proven by a `*_conformance_test.go` beside the table. Read "State machines: one enforcement locus" in [`references/placement-rules.md`](references/placement-rules.md) before adding a `Transition`/`CanTransitionTo` API.
+- Anything **two services must both hold** to behave correctly — a datastore identifier, an agreed value or timeout, a peer's enum, a contract version — is a contract with one declared owner, never a convenience copy. Read [`references/service-boundaries.md`](references/service-boundaries.md) before duplicating any of these across services.
 
 ## Decision flowcharts
 
@@ -222,6 +224,9 @@ When generating or reviewing layout, reject:
 - **Decorative state machine** — a transition table / `CanTransitionTo` in `domain/` that no production code path consults; the datastore or ad-hoc writes actually gate transitions. Declare one enforcement locus and add the conformance oracle (`*_conformance_test.go`), or delete the table — see "State machines: one enforcement locus" in [`references/placement-rules.md`](references/placement-rules.md).
 - **Shim interactor layer** — an `interactor/` layer of one-line port forwarders: pass-through use cases kept to satisfy the layer diagram. Enrich (the policy leaking into adapters/callers moves in) or delete (the caller uses the port directly) — see "Shim interactors: enrich or delete" in [`references/placement-rules.md`](references/placement-rules.md).
 - **Wire model in domain** — `domain/` types shaped by a wire/response contract (schema-mirroring tagged structs, envelope/version/status constants). Tell: changing a response contract would edit `domain/` — see "Wire models do not belong in domain/" in [`references/placement-rules.md`](references/placement-rules.md).
+- **Silent config mirror** — a cross-service agreed value (the same tunable — a lease window, heartbeat interval, a timeout that bounds a peer's) duplicated across services' config with no declared owner, no in-band transmission, and no runtime comparison. Forbidden when the value feeds a correctness decision — see the agreed-values ladder in [`references/service-boundaries.md`](references/service-boundaries.md).
+- **Peer-datastore reach-in** — a service reading (or writing) another service's tables/collections directly via re-declared string identifiers instead of the owner's API/contract — see "Durable-state privacy" in [`references/service-boundaries.md`](references/service-boundaries.md).
+- **Peer-enum modeling** — a hand-copied mirror of another service's private enum or state machine in `domain/`, with no exhaustiveness test binding the mirror to its source — see "Enum mirrors need exhaustiveness tests" in [`references/service-boundaries.md`](references/service-boundaries.md).
 
 Cite the rule when refusing. Offer the canonical alternative. If none fits cleanly → Step 0.
 

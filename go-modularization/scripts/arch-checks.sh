@@ -50,7 +50,13 @@ grouping — confirm the context before promoting; never fails the run);
 streaming adapter files over ~400 LOC (`streaming-file-loc`, report-only);
 exported Transition/CanTransitionTo under a domain/ dir with no non-test
 call site outside it and no *_conformance_test.go exercising it
-(`decorative-state-machine`, report-only).
+(`decorative-state-machine`, report-only); cross-service boundary review
+(`boundary-review`, report-only heuristics — see
+references/service-boundaries.md): the same datastore-identifier string
+constant (const name matching table|collection|bucket|queue|topic|index,
+case-insensitive) declared in two or more services, and env struct-tag
+names (env:"...") sharing an identical suffix after the first _-separated
+token across two or more services (possible silent config mirror).
 
 Output: structured report on stdout (text or json). Diagnostics on stderr.
 Detail lists are capped at 100 entries; exact counts are always in the summary.
@@ -345,6 +351,85 @@ if [ -n "$dsm_dirs" ]; then
     done < <(printf '%s\n' "$dsm_callers")
     [ -n "$hit" ] || add_w "decorative-state-machine" "$dd defines Transition/CanTransitionTo with no non-test call sites outside domain/ (heuristic — declare one enforcement locus + conformance test, or delete; see placement-rules)"
   done < <(printf '%s\n' "$dsm_dirs")
+fi
+
+# 8d. Service-boundary review (report-only warnings, both emitted as
+#     `boundary-review`; heuristics — see references/service-boundaries.md).
+#     Only meaningful with 2+ services, so scoped to services/.
+if [ -d services ]; then
+  # (a) Cross-service duplicate datastore-identifier constants: a string
+  #     constant whose NAME matches table|collection|bucket|queue|topic|index
+  #     (case-insensitive) declared with an IDENTICAL literal value in non-test
+  #     .go files of two or more services — likely two services reaching into
+  #     one datastore (durable-state privacy, service-boundaries rule 1).
+  #     Covers single-line `const NAME = "lit"` and names inside const blocks.
+  while IFS= read -r line; do
+    [ -n "$line" ] && add_w "boundary-review" "$line"
+  done < <(
+    find services \( -name vendor -o -name node_modules \) -prune -o \
+        -type f -name '*.go' ! -name '*_test.go' \
+        -exec awk '
+          FNR==1 { inblk=0; s=FILENAME; sub(/^(\.\/)?services\//,"",s); sub(/\/.*/,"",s); svc=s }
+          /^[[:space:]]*const[[:space:]]*\(/ { inblk=1; next }
+          inblk && /^[[:space:]]*\)/ { inblk=0; next }
+          {
+            if (svc=="") next
+            line=$0; ok=0
+            if (line ~ /^[[:space:]]*const[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*(string[[:space:]]*)?=[[:space:]]*"/) { sub(/^[[:space:]]*const[[:space:]]+/,"",line); ok=1 }
+            else if (inblk && line ~ /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*(string[[:space:]]*)?=[[:space:]]*"/) { sub(/^[[:space:]]*/,"",line); ok=1 }
+            if (!ok) next
+            name=line; sub(/[[:space:]=].*/,"",name)
+            if (tolower(name) !~ /(table|collection|bucket|queue|topic|index)/) next
+            val=line; sub(/^[^"]*"/,"",val); sub(/".*/,"",val)
+            if (val=="") next
+            print val "\t" svc
+          }' {} + 2>/dev/null \
+    | LC_ALL=C sort -u \
+    | awk -F'\t' '
+        function flush() { if (cur!="" && n>=2) printf "datastore identifier \"%s\" declared in services %s (heuristic — declare one owner or move to the contract tier; see references/service-boundaries.md)\n", cur, svcs }
+        $1!=cur { flush(); cur=$1; n=0; svcs="" }
+        { n++; svcs=(svcs=="" ? $2 : svcs " and " $2) }
+        END { flush() }'
+  )
+
+  # (b) Identically-suffixed env-tag names under different service prefixes:
+  #     env:"NAME" struct-tag values whose trailing token sequence after the
+  #     first _-separated token is identical across 2+ services — a possible
+  #     silent config mirror (service-boundaries rule 2). One warning per
+  #     suffix, one example value per service.
+  while IFS= read -r line; do
+    [ -n "$line" ] && add_w "boundary-review" "$line"
+  done < <(
+    find services \( -name vendor -o -name node_modules \) -prune -o \
+        -type f -name '*.go' ! -name '*_test.go' \
+        -exec awk '
+          FNR==1 { s=FILENAME; sub(/^(\.\/)?services\//,"",s); sub(/\/.*/,"",s); svc=s }
+          {
+            if (svc=="") next
+            line=$0
+            while (match(line, /env:"[^"]+"/)) {
+              v=substr(line, RSTART+5, RLENGTH-6)
+              print v "\t" svc
+              line=substr(line, RSTART+RLENGTH)
+            }
+          }' {} + 2>/dev/null \
+    | LC_ALL=C sort -u \
+    | awk -F'\t' '
+        {
+          full=$1; svc=$2
+          p=index(full,"_"); if (p==0) next
+          sfx=substr(full,p+1); if (sfx=="") next
+          if (!((sfx SUBSEP svc) in seen)) {
+            seen[sfx SUBSEP svc]=1; nsvc[sfx]++
+            det[sfx]=(det[sfx]=="" ? "" : det[sfx] ", ") svc ": " full
+            if (!(sfx in ord)) { ord[sfx]=1; osfx[++no]=sfx }
+          }
+        }
+        END {
+          for (i=1;i<=no;i++) { s=osfx[i]; if (nsvc[s]>=2)
+            printf "env tag suffix \"%s\" appears under different service prefixes (%s) (heuristic — silent config mirror? declare one owner; see references/service-boundaries.md)\n", s, det[s] }
+        }'
+  )
 fi
 
 # 9. Ratchet (--baseline): partition current violations into NEW vs STANDING.
