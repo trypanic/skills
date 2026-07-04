@@ -152,7 +152,7 @@ while IFS= read -r d; do
   [ -n "$d" ] || continue
   b=$(basename "$d")
   case " $GO_STDLIB_NAMES " in
-    *" $b "*) add_v "stdlib-shadow-name" "$d shadows Go stdlib package \"$b\" — use ${b}x / ${b}kit naming" ;;
+    *" $b "*) add_v "stdlib-shadow-name" "$d shadows Go stdlib package \"$b\" — use a <domain>x / <domain>kit name (e.g. slicex)" ;;
   esac
 done < <({
   [ -d internal ]      && find internal      -mindepth 1 -maxdepth 1 -type d 2>/dev/null

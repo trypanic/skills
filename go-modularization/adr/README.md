@@ -296,6 +296,8 @@ The application layer holds two file shapes, both flat in `interactor/` until th
 
 Pick one filename convention per service and apply it to both shapes consistently. A process manager's private helper state (a ledger, an emit sink, a drain gate) lives beside it as an unexported type — it is not a use case and gets no `interactor_` file of its own.
 
+> **Addendum (2026-07-04):** the one-convention sentence governs **role names** only (one role-naming style per service). The no-prefix rule for process managers is absolute — `scheduler.go`, never `interactor_scheduler.go` — and the resulting mix of prefixed use cases with unprefixed process managers in one flat `interactor/` **is** the convention, not an inconsistency to fix. Authoritative wording: "Two interactor shapes" in [`../references/placement-rules.md`](../references/placement-rules.md) (cheatsheet R-24).
+
 ## ADR-25: Generated wire contracts are adapter-only
 
 A **generated wire contract** — a versioned package `internal/contracts/**/v<N>` or any `*.pb.go` package — may be imported only by adapters (`api/`, `grpc/`, `ws/`, `sse/`, `consumer/`, `producer/`, `external_services/`, `data_repositories/`, `storage/`). It is forbidden in `domain/`, `ports/`, and `interactor/`. Ports speak domain types; translate wire↔domain at the adapter boundary (ADR-26).

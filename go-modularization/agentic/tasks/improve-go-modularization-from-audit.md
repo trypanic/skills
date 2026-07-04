@@ -1,6 +1,6 @@
 # Task: improve go-modularization from the 2026-07-04 architecture audit
 
-**Status:** IN PROGRESS — execution tracked per phase in [`progress.md`](progress.md); completed phases are checked off below.
+**Status:** COMPLETE (2026-07-04) — all 10 phases executed and verified; per-phase record in [`progress.md`](progress.md).
 **Audit artifact (single source of findings):** [`../audit/go-modularization-architecture-audit.md`](../audit/go-modularization-architecture-audit.md) — all proposal IDs below (`12.x`), rule lists (`13.x`), anti-patterns (`14.x`), and the migration outline (`15.x`) refer to that document's sections.
 
 **Reference resources (hexagonal-architecture calibration):** the originally referenced `domain-driven-hexagon.jpg` no longer exists; these two articles replace it as the external calibration lens. Read both before authoring or revising any hexagonal-architecture rule text, and use them to reinforce and cross-check every claim the skill makes about layering, ports/adapters, and dependency direction:
@@ -13,11 +13,11 @@ Where new or revised skill text asserts a hexagonal-architecture principle, it m
 
 ## Global acceptance checks (apply to every phase)
 
-- [ ] No skill text references `amazon-scrape-worker`, `amazon-scrape-orchestrator`, `source-integration`, or any file path from the audited repo.
-- [ ] SKILL.md stays a routing + invariants file: task detail goes to `references/`, SKILL.md gets only the invariant/gotcha/flowchart line and a routing-table row.
-- [ ] Every new rule appears in exactly one authoritative place; other files link to it (the skill's own "if this file and a reference disagree, this file wins" model is preserved).
-- [ ] `adr/README.md` gains an append-only ADR per phase that introduces a new rule class (phases 2, 3, 4, 5, 7, 9); `references/adr-cheatsheet.md` rows updated in the same phase.
-- [ ] `bash scripts/arch-checks.sh --help` and `--json` still work; script stays POSIX-bash + awk/find only (no new dependencies).
+- [x] No skill text references `amazon-scrape-worker`, `amazon-scrape-orchestrator`, `source-integration`, or any file path from the audited repo.
+- [x] SKILL.md stays a routing + invariants file: task detail goes to `references/`, SKILL.md gets only the invariant/gotcha/flowchart line and a routing-table row.
+- [x] Every new rule appears in exactly one authoritative place; other files link to it (the skill's own "if this file and a reference disagree, this file wins" model is preserved).
+- [x] `adr/README.md` gains an append-only ADR per phase that introduces a new rule class (phases 2, 3, 4, 5, 7, 9); `references/adr-cheatsheet.md` rows updated in the same phase.
+- [x] `bash scripts/arch-checks.sh --help` and `--json` still work; script stays POSIX-bash + awk/find only (no new dependencies).
 
 ---
 
@@ -93,10 +93,10 @@ Restore trust before adding new checks. File: `scripts/arch-checks.sh`.
 
 ## Phase 10 — Final validation
 
-- [ ] 10.1 Re-run improved arch-checks against the audited repo: zero false positives; correctly reports (at minimum) the two `inner-imports-contracts` edges grouped under one service, decorative-state-machine candidates in both services' `domain/`, tags-in-inner-layers on the ports row struct, root-internal occupancy ×2, streaming-file-loc ×1.
-- [ ] 10.2 Documentation coherence pass: flowcharts, gotchas, anti-pattern list, cheatsheet, and references all agree; no rule stated in two places with different wording.
-- [ ] 10.2b Hexagonal-calibration pass: every new/revised statement about layering, ports/adapters, or dependency direction checked against the two reference resources listed at the top (Graça Explicit Architecture; Netflix hexagonal case study); divergences documented in the relevant ADR, none silent.
-- [ ] 10.3 Regression: original clean-fixture run still exits 0; `--json` schema unchanged except additive fields.
+- [x] 10.1 Re-run improved arch-checks against the audited repo: zero false positives; correctly reports (at minimum) the two `inner-imports-contracts` edges grouped under one service, decorative-state-machine candidates in both services' `domain/`, tags-in-inner-layers on the ports row struct, root-internal occupancy ×2, streaming-file-loc ×1.
+- [x] 10.2 Documentation coherence pass: flowcharts, gotchas, anti-pattern list, cheatsheet, and references all agree; no rule stated in two places with different wording.
+- [x] 10.2b Hexagonal-calibration pass: every new/revised statement about layering, ports/adapters, or dependency direction checked against the two reference resources listed at the top (Graça Explicit Architecture; Netflix hexagonal case study); divergences documented in the relevant ADR, none silent.
+- [x] 10.3 Regression: original clean-fixture run still exits 0; `--json` schema unchanged except additive fields.
 
 ## Ordering rationale
 

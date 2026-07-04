@@ -90,7 +90,7 @@ services/<service>/internal/contracts  → go-pkgs (primitive/stdlib only)
 services/<service>/internal  → services/<service>/internal/contracts (service-scoped),
                                internal/contracts (cross-service), internal/kernel,
                                go-pkgs, external SDK (if used)
-internal/contracts           → internal/kernel, go-pkgs
+internal/contracts           → go-pkgs (primitive/stdlib payloads; never internal/kernel)
 internal/kernel              → go-pkgs
 go-pkgs                      → (stdlib only; ideally no third-party)
 go-pkgs/infra                → stdlib + necessary third-party (default home for reusable infra)
@@ -103,7 +103,7 @@ external SDK repo            → (stdlib and third-party; never imports from thi
 - `<layer>` (`domain`, `ports`, `interactor`) importing a generated wire contract (versioned `internal/contracts/**/v<N>` or any `*.pb.go`) — adapter-only (R-25).
 - Service A's `internal/` importing service B's `internal/` — incl. service B's service-scoped `internal/contracts/`. Shared contracts must promote to root `internal/contracts/`.
 - Service-scoped `internal/contracts/` importing `domain/`, `interactor/`, any adapter, or `internal/kernel/`.
-- `internal/kernel/` importing `internal/contracts/`.
+- `internal/kernel/` importing `internal/contracts/` — and vice versa (wire payloads stay primitive/stdlib).
 - `go-pkgs/` importing `internal/` or `services/`.
 - External SDK repo importing this repo.
 - Adapter A importing adapter B directly.

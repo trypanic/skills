@@ -76,9 +76,9 @@ Code enters a shared tier (root `internal/`, `go-pkgs/`) only with **at least
 two actual importing services today, verified by import listing** — "will be
 shared someday" does not qualify. A shared package with a single importing
 service is demoted: move it into its one consumer. `scripts/arch-checks.sh`
-reports the importer count of every shared-tier package as
-`shared-tier-importer-count` (report-only warning; a zero-importer shared
-package is flagged as possible dead shared code).
+reports every shared-tier package with fewer than two distinct importing
+services as `shared-tier-importer-count` (report-only warning; a zero-importer
+shared package is flagged as possible dead shared code).
 
 ## Contract scope — three tiers (not just root)
 

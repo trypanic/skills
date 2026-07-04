@@ -100,3 +100,17 @@ Conventions: consumer = the audited repo (read-only acceptance target); gate evi
 - gate: all common checks + full cumulative asserts passed; consumer unchanged (21 violations + 7 warnings; doc-only phase).
 - divergences: root-cause classification presented two-axis (adds audit §15.1's disposition triage — mechanical / ADR-first / Step 0); ADR-33 carries a calibration note for consistency with ADR-29–32 (no fresh article fetch — no new layering claim).
 - notes-for-later: Phase-10 coherence backlog unchanged + optional `migrate`-mode report shape (defined in migration.md §1) if the Verify template wants it.
+
+## Phase 10 — final validation + coherence pass — PASS (attempt 1) — 2026-07-04
+
+- commit: (this commit)
+- files: SKILL.md (routing-table repair — separator + `internal/kernel` or `contracts/` row now 2 cells; two-shapes gotcha aligned with the R-24 clarification; "focused use cases that own a decision or composition"; shared-code flowchart hard qualifiers; Verify check-list names every current check); scripts/arch-checks.sh (stdlib-shadow suggestion wording only — `use a <domain>x / <domain>kit name (e.g. slicex)`); references/shared-code.md (importer-count enforcement sentence made accurate); references/adr-cheatsheet.md (dependency table fixed: contracts→kernel edge removed, Disallowed bullet bidirectional — pre-existing contradiction with SKILL.md and the script); adr/README.md (one dated append-only addendum under ADR-24 pointing at the R-24 clarification).
+- 10.1 (orchestrator battery, consumer read-only): exit 1, 21 violations + 7 warnings, all 23 cumulative asserts green — incl. the two `inner-imports-contracts` edges grouped under one service with layers named, `decorative-state-machine` in both services' domain/, `tags-in-inner-layers` on the ports row struct, `root-internal-occupancy` ×2, `stdlib-shadow-name` ×1, `streaming-file-loc` ×1, `boundary-review` ×2, `shared-tier-importer-count` ×2; zero false-positive classes (`cross-service-internal`/`bad-main`/`go-vet`/`go-build`/`adapter-imports-adapter` all 0).
+- 10.2: coherence matrix produced — every phase-2..9 rule has one authoritative home with consistent pointers; three disagreements found and fixed (SKILL.md gotcha, shared-code enforcement sentence, cheatsheet dependency table) + ADR-24 addendum.
+- 10.2b: both articles fetched; every new/revised layering statement checked; NO silent divergences — the only two divergences are the ones already recorded (ADR-30 datastore-enforced locus; ADR-32 read-only-query tightening).
+- 10.3: clean fixture exit 0 (text+json); `--json` top-level keys = original + `warnings` (always) + `standing` (flag-gated) — additive only; ratchet regression green; routing table 2 cells in all 11 rows.
+- known limitations left on record (not fixed, by design): adr/README.md history-only dependency table retains the superseded contracts→kernel edge (file is declared superseded by the cheatsheet); `adapter()` last-segment extraction limitation (commented in script, zero consumer findings); audit 12.10's per-service SP-name-prefix check unimplemented (future work).
+
+---
+
+**RUN COMPLETE — all 10 phases + global acceptance PASS, 2026-07-04.** 11 commits on `improve/go-modularization-audit` (Phase 0 + phases 1-10). Commits unsigned (`--no-gpg-sign` — GPG pinentry unavailable in the orchestrator session); re-sign via `git rebase --exec 'git commit --amend --no-edit -n -S' main` if desired.
