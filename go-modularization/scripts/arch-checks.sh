@@ -21,15 +21,17 @@ checks are skipped (NOTE on stderr) when neither go.mod nor go.work is at the
 root; folder and migration checks still run.
 
 Checks: forbidden folder names; forbidden top-level config/middleware/events/
-messages; go build + go vet; module topology (single root go.mod, or go.work
-with every module dir registered under `use`; orphan multi-module flagged);
-nine import invariants
+messages; go build + go vet (module dirs with zero .go files are skipped);
+module topology (single root go.mod, or go.work with every module dir
+registered under `use`; orphan multi-module flagged); nine import invariants
 (layer->adapter, inner->generated-contracts, cross-service internal,
 kernel<->contracts, contracts->business, go-pkgs->internal, adapter->adapter,
-imports-cmd); one
-cmd/main.go per service; no Go under
-scripts/; migration filename grammar + up/down pairing; promotion-threshold
-counts (report-only, never fails the run).
+imports-cmd); one cmd/main.go per service (services with no non-test .go
+files — non-Go services — are skipped); no Go under scripts/; migration
+filename grammar + up/down pairing (a grammar-failing file with a script
+extension under migrations/ is flagged misplaced-script instead);
+promotion-threshold counts grouped per context stem (report-only heuristic
+grouping — confirm the context before promoting; never fails the run).
 
 Output: structured report on stdout (text or json). Diagnostics on stderr.
 Detail lists are capped at 100 entries; exact counts are always in the summary.
@@ -101,8 +103,10 @@ elif [ "$have_mod" -eq 1 ]; then scan_dirs="."
 fi
 
 # 2. Build and vet, per module dir (diagnostics to stderr; verdict is the violation).
+#    Module dirs containing zero .go files (asset-only modules) are skipped.
 if [ "$run_go" -eq 1 ]; then
   for d in $scan_dirs; do
+    [ -n "$(find "$d" \( -name vendor -o -name node_modules \) -prune -o -name '*.go' -print -quit 2>/dev/null)" ] || continue
     ( cd "$d" && go build ./... ) >/dev/null 2>&1 || add_v "go-build" "go build ./... failed in $d (rerun: cd $d && go build ./...)"
     ( cd "$d" && go vet ./...   ) >/dev/null 2>&1 || add_v "go-vet"   "go vet ./... failed in $d (rerun: cd $d && go vet ./...)"
   done
@@ -136,8 +140,8 @@ if [ "$run_go" -eq 1 ]; then
     check="${line%%$'\t'*}"; detail="${line#*$'\t'}"
     add_v "$check" "$detail"
   done < <(printf '%s\n' "$dump" | awk -F'\t' -v root="$root" '
-    function svc(p,   s){ if(p !~ "(^|/)services/") return ""; s=p; sub(".*services/","",s); sub("/.*","",s); return s }
-    function adapter(p,   a){ if(p !~ "/(api|consumer|cli|grpc|ws|sse|graphql|data_repositories|external_services|producer|storage)(/|$)") return ""; a=p; sub(".*/(internal/)?","",a); sub("/.*","",a); return a }
+    function svc(p,   s){ if (!match(p, /(^|\/)services\//)) return ""; s = substr(p, RSTART+RLENGTH); sub(/\/.*/, "", s); return s }
+    function adapter(p,   a){ if(p !~ "/(api|consumer|cli|grpc|ws|sse|graphql|data_repositories|external_services|producer|storage)(/|$)") return ""; a=p; sub(".*/(internal/)?","",a); sub("/.*","",a); return a }   # known limitation: last-segment extraction treats promoted provider subfolders as the adapter identity
     {
       ip=$1; rel=$2; sub("^"root"/","",rel); sub("^"root"$","",rel)
       relOf[ip]=rel; impsOf[ip]=$3; order[++cnt]=ip
@@ -164,10 +168,13 @@ if [ "$run_go" -eq 1 ]; then
     }')
 fi
 
-# 5. Exactly one main.go per service; it must live at cmd/main.go.
+# 5. Exactly one main.go per service; it must live at cmd/main.go. Services
+#    with zero non-test .go files (non-Go services) are skipped.
 for svc in services/*/; do
   [ -d "$svc" ] || continue
-  n=$(find "$svc" -name main.go | wc -l)
+  [ -n "$(find "$svc" \( -name vendor -o -name node_modules \) -prune -o \
+            -name '*.go' ! -name '*_test.go' -print -quit 2>/dev/null)" ] || continue
+  n=$(find "$svc" \( -name vendor -o -name node_modules \) -prune -o -name main.go -print | wc -l)
   if [ "$n" -ne 1 ] || [ ! -f "${svc}cmd/main.go" ]; then
     add_v "bad-main" "$svc expected exactly one main.go at cmd/main.go (found $n)"
   fi
@@ -187,7 +194,16 @@ if [ -d migrations ]; then
     case "$base" in
       *.up.sql|*.down.sql) echo "$base" | grep -Eq "$sql_re" || add_v "bad-migration-name" "$f" ;;
       *.sql)               add_v "bad-migration-name" "$f (bare .sql: missing .up/.down)" ;;
-      *)                   echo "$base" | grep -Eq "$fwd_re" || add_v "bad-migration-name" "$f" ;;
+      *) # Grammar first: a name matching fwd_re is a valid forward-only
+         # migration whatever its extension. Only grammar failures carrying a
+         # script extension are misplaced scripts, not bad migration names.
+         if ! echo "$base" | grep -Eq "$fwd_re"; then
+           case "$base" in
+             *.sh|*.bash|*.zsh|*.py|*.rb|*.pl|*.js|*.ts|*.mjs|*.cjs|*.ps1)
+               add_v "misplaced-script" "$f (scripts do not live under migrations/)" ;;
+             *) add_v "bad-migration-name" "$f" ;;
+           esac
+         fi ;;
     esac
   done < <(find migrations -type f)
   while IFS= read -r f; do
@@ -198,12 +214,27 @@ if [ -d migrations ]; then
   done < <(find migrations -name '*.up.sql' -o -name '*.down.sql')
 fi
 
-# 8. Promotion audit (report-only): flat dirs at/above the >=10 threshold.
+# 8. Promotion audit (report-only): per-(dir, context-stem) groups at/above the
+#    >=10 threshold. SKILL.md's counting rule fixes the exclusions and the
+#    thresholds but no grouping dimension, so the stem grouping is a labeled
+#    heuristic: strip .go; strip a leading layer prefix (interactor_|
+#    repository_|storage_|middleware_); strip a trailing role suffix (_port|
+#    _handler[_vN]|_consumer|_producer|_command|_translation); the stem is the
+#    first _-separated token of what remains.
 while IFS= read -r d; do
-  n=$(find "$d" -maxdepth 1 -name '*.go' \
-        ! -name '*_test.go' ! -name '*.pb.go' ! -name '*_gen.go' 2>/dev/null | wc -l)
-  [ "$n" -ge 10 ] && add_p "$d ($n countable files)"
-done < <(find services internal go-pkgs -type d 2>/dev/null)
+  while IFS= read -r line; do [ -n "$line" ] && add_p "$line"; done < <(
+    find "$d" -maxdepth 1 -name '*.go' \
+        ! -name '*_test.go' ! -name '*.pb.go' ! -name '*_gen.go' 2>/dev/null \
+    | awk -F/ -v dir="$d" '
+        { b=$NF; sub(/\.go$/,"",b)
+          sub(/^(interactor|repository|storage|middleware)_/,"",b)
+          sub(/(_port|_handler(_v[0-9]+)?|_consumer|_producer|_command|_translation)$/,"",b)
+          split(b, t, "_"); if(t[1]=="") next
+          if(!(t[1] in c)) ord[++no]=t[1]
+          c[t[1]]++ }
+        END { for(i=1;i<=no;i++){ s=ord[i]; if(c[s]>=10)
+                printf "%s context \047%s\047: %d countable files (heuristic — confirm context grouping before promoting)\n", dir, s, c[s] } }')
+done < <(find services internal go-pkgs \( -name vendor -o -name node_modules \) -prune -o -type d -print 2>/dev/null)
 
 # --- Render report -------------------------------------------------------------
 vcount=$(printf '%s' "$violations" | grep -c . || true)

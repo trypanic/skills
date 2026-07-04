@@ -1,6 +1,6 @@
 # Task: improve go-modularization from the 2026-07-04 architecture audit
 
-**Status:** NOT STARTED — this file is the ordered implementation plan for a later skill-improvement phase. It performs no improvement itself.
+**Status:** IN PROGRESS — execution tracked per phase in [`progress.md`](progress.md); completed phases are checked off below.
 **Audit artifact (single source of findings):** [`../audit/go-modularization-architecture-audit.md`](../audit/go-modularization-architecture-audit.md) — all proposal IDs below (`12.x`), rule lists (`13.x`), anti-patterns (`14.x`), and the migration outline (`15.x`) refer to that document's sections.
 
 **Reference resources (hexagonal-architecture calibration):** the originally referenced `domain-driven-hexagon.jpg` no longer exists; these two articles replace it as the external calibration lens. Read both before authoring or revising any hexagonal-architecture rule text, and use them to reinforce and cross-check every claim the skill makes about layering, ports/adapters, and dependency direction:
@@ -25,11 +25,11 @@ Where new or revised skill text asserts a hexagonal-architecture principle, it m
 
 Restore trust before adding new checks. File: `scripts/arch-checks.sh`.
 
-- [ ] 1.1 Fix `svc()` greedy regex (`sub(".*services/","",s)`) so paths containing `external_services/` (or any `*services/` segment) resolve to the true service segment. Anchor to the leading `services/` path component.
-- [ ] 1.2 Promotion audit: count per-context within a layer (group countable files by context stem per the SKILL.md counting rule), not per-folder totals; label output as heuristic needing context confirmation.
-- [ ] 1.3 `bad-main`: skip `services/*` dirs containing no non-test `.go` files (non-Go services).
-- [ ] 1.4 Migration check: files under `migrations/` that are not migration files (e.g. helper shell scripts) get flagged `misplaced-script`, not `bad-migration-name`.
-- [ ] 1.5 Build/vet: skip modules containing zero `.go` files.
+- [x] 1.1 Fix `svc()` greedy regex (`sub(".*services/","",s)`) so paths containing `external_services/` (or any `*services/` segment) resolve to the true service segment. Anchor to the leading `services/` path component.
+- [x] 1.2 Promotion audit: count per-context within a layer (group countable files by context stem per the SKILL.md counting rule), not per-folder totals; label output as heuristic needing context confirmation.
+- [x] 1.3 `bad-main`: skip `services/*` dirs containing no non-test `.go` files (non-Go services).
+- [x] 1.4 Migration check: files under `migrations/` that are not migration files (e.g. helper shell scripts) get flagged `misplaced-script`, not `bad-migration-name`.
+- [x] 1.5 Build/vet: skip modules containing zero `.go` files.
 - **Acceptance:** run against the audited repo (read-only): zero `cross-service-internal` false positives on promoted `external_services/` subfolders; fakeapi not flagged `bad-main`; `migrate.sh` reported as `misplaced-script`; empty `go-pkgs` module produces no `go-vet` violation; the two real `inner-imports-contracts` findings still reported. Also run against a minimal clean fixture tree (create under a temp dir in the test, not in the skill repo): exit 0.
 
 ## Phase 2 — Enforcement binding (audit 12.11, 15.7; evidence S-R1)
