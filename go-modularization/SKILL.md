@@ -220,6 +220,8 @@ When generating or reviewing layout, reject:
 - Go files under `scripts/`.
 - Forcing infra into a remote SDK repo when `go-pkgs/infra/` is the better default.
 - **Decorative state machine** — a transition table / `CanTransitionTo` in `domain/` that no production code path consults; the datastore or ad-hoc writes actually gate transitions. Declare one enforcement locus and add the conformance oracle (`*_conformance_test.go`), or delete the table — see "State machines: one enforcement locus" in [`references/placement-rules.md`](references/placement-rules.md).
+- **Shim interactor layer** — an `interactor/` layer of one-line port forwarders: pass-through use cases kept to satisfy the layer diagram. Enrich (the policy leaking into adapters/callers moves in) or delete (the caller uses the port directly) — see "Shim interactors: enrich or delete" in [`references/placement-rules.md`](references/placement-rules.md).
+- **Wire model in domain** — `domain/` types shaped by a wire/response contract (schema-mirroring tagged structs, envelope/version/status constants). Tell: changing a response contract would edit `domain/` — see "Wire models do not belong in domain/" in [`references/placement-rules.md`](references/placement-rules.md).
 
 Cite the rule when refusing. Offer the canonical alternative. If none fits cleanly → Step 0.
 

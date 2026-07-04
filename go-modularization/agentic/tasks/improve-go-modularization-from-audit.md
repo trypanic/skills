@@ -66,9 +66,9 @@ Restore trust before adding new checks. File: `scripts/arch-checks.sh`.
 
 ## Phase 6 — Anemic interactors + wire-model-in-domain (audit 12.6, 12.8; evidence O-5, O-4)
 
-- [ ] 6.1 placement-rules.md interactor section: shim-interactor heuristic (enrich-or-delete; datastore-procedure-centric carve-out citing the Phase-4 locus rule).
-- [ ] 6.2 SKILL.md anti-pattern list: "shim interactor layer", "wire model in domain" (audit 14.4, 14.7 wording); placement-rules gets the wire-model tell ("changing a response contract would edit domain/").
-- [ ] 6.3 layout-examples.md: shim-interactor counter-example with both resolutions shown.
+- [x] 6.1 placement-rules.md interactor section: shim-interactor heuristic (enrich-or-delete; datastore-procedure-centric carve-out citing the Phase-4 locus rule).
+- [x] 6.2 SKILL.md anti-pattern list: "shim interactor layer", "wire model in domain" (audit 14.4, 14.7 wording); placement-rules gets the wire-model tell ("changing a response contract would edit domain/").
+- [x] 6.3 layout-examples.md: shim-interactor counter-example with both resolutions shown.
 - **Acceptance:** examples compile-shaped (pseudocode fine, consistent with existing example style); anti-pattern list alphabetically or thematically ordered as it currently is — no reordering of existing entries.
 
 ## Phase 7 — Service boundaries reference (audit 12.10; evidence B-2…B-9, C-4, C-5, C-6)

@@ -85,6 +85,33 @@ A process manager's private helper state (a ledger, an emit sink, a drain gate)
 lives beside it in `interactor/` as an unexported type; it is not a use case and
 gets no `interactor_` file of its own.
 
+### Shim interactors: enrich or delete
+
+A use-case interactor must own at least one of: a decision, an invariant
+check, a composition of ≥2 port calls, or cross-cutting policy (retry budget,
+ordering, idempotency). A one-line body delegating to a same-named port —
+no validation, no derivation, no composition, no policy — is a **shim
+interactor**; the workflow policy the layer exists to hold is usually leaking
+into an adapter or a caller instead. Two resolutions; pick one:
+
+- **Enrich** — move the policy currently living elsewhere (often in an
+  adapter or a datastore procedure) into the interactor, so it earns its
+  layer: validation, derivation, or composition around the port call.
+- **Delete** — remove the shim and let the inbound adapter consume the port
+  directly via the sanctioned adapter→port→adapter **mediation seam** ("Port
+  quality", below).
+
+Do not keep shims to satisfy the layer diagram — that is the **shim
+interactor layer** anti-pattern (SKILL.md). Worked example with both
+resolutions: "Shim interactor" in [`layout-examples.md`](layout-examples.md).
+
+**Carve-out — datastore-procedure-centric services.** When a design
+intentionally hosts workflow logic in the database (stored procedures own the
+policy), thin interactors are the **expected** shape, not shims to enrich:
+record that choice as the enforcement-locus decision instead of wrapping
+every procedure in a pass-through — declaration and conformance requirements
+in "State machines: one enforcement locus" (below).
+
 ## API versioning: suffix, then promote
 
 ```text
@@ -174,6 +201,18 @@ Comment examples for classification:
 // Retry/backoff formula for a domain retry disposition -> domain.
 // Transport reconnect timing may stay adapter-local; business retry eligibility does not.
 ```
+
+### Wire models do not belong in domain/
+
+A struct whose field tags, envelope/version/status constants, or shape mirror
+a published request/response schema does not belong in `domain/`, even if
+only one endpoint uses it. It is an adapter-local DTO (R-21, adapter-local
+tier); the handler maps domain values into it. **Tell: changing a response
+contract would edit `domain/`** — if renaming or reshaping an outbound
+response field forces a `domain/` edit, the domain type is a wire model, and
+the response shape belongs to the adapter (translation) or the appropriate
+`contracts/` tier. That is the **wire model in domain** anti-pattern
+(SKILL.md).
 
 ## State machines: one enforcement locus
 

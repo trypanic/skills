@@ -64,3 +64,12 @@ Conventions: consumer = the audited repo (read-only acceptance target); gate evi
 - calibration: both articles fetched; no divergence (Graça "ports fit the core's needs, not tool APIs" = capability rule; Netflix consumer-side translation framing cited in ADR-31).
 - divergences: single-service repos report `service (root)` in grouped details; old-format inner-imports-contracts baselines won't match the new detail text (no checked-in baseline exists — non-issue).
 - notes-for-later: Phase-10 consumer expectation now 18 violations + 3 warnings. SKILL.md gotcha "Pick one filename convention per service" (line ~146) and the Verify check-list (no `tags-in-inner-layers`, no grouped-format mention) need the Phase-10 coherence pass.
+
+## Phase 6 — anemic interactors + wire-model-in-domain — PASS (attempt 1) — 2026-07-04
+
+- commit: (this commit)
+- files: references/placement-rules.md (`### Shim interactors: enrich or delete` — substance requirement, two resolutions, datastore-procedure carve-out citing the Phase-4 locus section by reference; `### Wire models do not belong in domain/` with the "changing a response contract would edit domain/" tell); SKILL.md (two anti-pattern bullets appended: shim interactor layer, wire model in domain — diff verified purely additive at list end); references/layout-examples.md (`## Shim interactor` counter-example with enrich and delete resolutions in the existing pseudocode style). Doc-only; no script/ADR/cheatsheet changes (Phase 6 not in the ADR list).
+- gate: all common checks + full cumulative asserts passed; consumer unchanged at 18 violations + 3 warnings (doc-only phase).
+- calibration: both articles fetched; no divergence. Noted (ledger-only, no ADR this phase): Graça's "command handlers as mere wiring" is CQRS-bus dispatch, not a pass-through over an outbound port — compatible with enrich-or-delete.
+- divergences: none material.
+- notes-for-later: Phase-7 anti-pattern appends go after "Wire model in domain". Phase-10 coherence: SKILL.md gotcha "thin use cases" wording slightly in tension with the substance requirement — consider "focused use cases".

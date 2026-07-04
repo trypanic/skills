@@ -354,6 +354,82 @@ The interactor switches on the domain sum (`switch e := ev.(type)`), never on
 a wire enum. A wire frame kind with no domain variant fails in translation —
 at the edge, not in the core.
 
+## Shim interactor — the pass-through, and both resolutions
+
+A use-case interactor that only forwards arguments to a single port call — no
+validation, no derivation, no composition, no policy — is a **shim** ("Shim
+interactors: enrich or delete" in placement-rules). The workflow policy the
+layer exists to hold is usually sitting in the caller.
+
+Anti-pattern — the shim; the eligibility policy leaks into the handler:
+
+```go
+// internal/interactor/interactor_archive.go
+// SHIM: one port call, nothing decided here.
+func (i *ArchiveInteractor) Archive(ctx context.Context, id domain.OrderID) error {
+    return i.archiver.Archive(ctx, id)
+}
+
+// internal/api/orders_handler_v1.go  (adapter — deciding, which adapters must not)
+func (h *Handler) ArchiveOrder(w http.ResponseWriter, r *http.Request) {
+    order, _ := h.orders.Get(r.Context(), orderID(r))
+    if order.Status != domain.StatusSettled ||
+        time.Since(order.ClosedAt) < 30*24*time.Hour { // business policy in the adapter
+        http.Error(w, "not eligible", http.StatusConflict)
+        return
+    }
+    _ = h.archive.Archive(r.Context(), order.ID) // ...then the shim forwards it
+}
+```
+
+Resolution 1 — **enrich**: the policy moves into the interactor (the pure rule
+into `domain/`); the handler goes back to decode-call-encode:
+
+```go
+// internal/domain/order.go  (pure rule: settled + retention window)
+func (o Order) ArchiveEligible(now time.Time) error { ... }
+
+// internal/interactor/interactor_archive.go  (earns its layer)
+func (i *ArchiveInteractor) Archive(ctx context.Context, id domain.OrderID) error {
+    order, err := i.orders.Get(ctx, id) // composition: 2 port calls
+    if err != nil {
+        return err
+    }
+    if err := order.ArchiveEligible(i.clock.Now()); err != nil { // invariant check
+        return err
+    }
+    return i.archiver.Archive(ctx, id)
+}
+
+// internal/api/orders_handler_v1.go  (adapter: decode, call, encode — no policy)
+func (h *Handler) ArchiveOrder(w http.ResponseWriter, r *http.Request) {
+    err := h.archive.Archive(r.Context(), orderID(r))
+    writeStatus(w, err) // map err -> status code, nothing decided here
+}
+```
+
+Resolution 2 — **delete**: there is genuinely no policy anywhere between
+transport and capability (or the datastore procedure owns it — the
+enforcement-locus carve-out in placement-rules). Wire the caller to the port
+directly via the sanctioned adapter→port→adapter mediation seam (R-27
+erratum); do not keep the shim for the diagram:
+
+```go
+// cmd/main.go  (wiring: handler consumes ports.OrderArchiver directly)
+handler := api.NewHandler(archiver)
+
+// internal/api/orders_handler_v1.go
+func (h *Handler) ArchiveOrder(w http.ResponseWriter, r *http.Request) {
+    err := h.archiver.Archive(r.Context(), orderID(r)) // mediation seam
+    writeStatus(w, err)
+}
+```
+
+Delete is right when the operation truly is transport→capability with no
+business decision in between. The moment a decision appears — eligibility,
+derivation, ordering, a retry budget — switch to resolution 1: the policy
+goes into the interactor, never into the handler.
+
 ## Migration filenames
 
 Valid (shared layout, sequence global per technology):
