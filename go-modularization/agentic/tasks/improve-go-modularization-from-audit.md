@@ -34,9 +34,9 @@ Restore trust before adding new checks. File: `scripts/arch-checks.sh`.
 
 ## Phase 2 — Enforcement binding (audit 12.11, 15.7; evidence S-R1)
 
-- [ ] 2.1 SKILL.md Verify section: add the gate wording (arch-checks in CI / before ending layout-touching changes; `review` mode always embeds script findings; standing violations reported before adding to them).
-- [ ] 2.2 Add ratchet-baseline mechanism description (checked-in JSON baseline, CI fails only on new violations) — wording in audit 15.7; place the operational detail in the new `references/migration.md` stub (created fully in Phase 9) or Verify section, one home only.
-- [ ] 2.3 arch-checks: add `--baseline FILE` flag — subtract baseline violations from the failure verdict, still list them under a "standing" heading.
+- [x] 2.1 SKILL.md Verify section: add the gate wording (arch-checks in CI / before ending layout-touching changes; `review` mode always embeds script findings; standing violations reported before adding to them).
+- [x] 2.2 Add ratchet-baseline mechanism description (checked-in JSON baseline, CI fails only on new violations) — wording in audit 15.7; place the operational detail in the new `references/migration.md` stub (created fully in Phase 9) or Verify section, one home only.
+- [x] 2.3 arch-checks: add `--baseline FILE` flag — subtract baseline violations from the failure verdict, still list them under a "standing" heading.
 - **Acceptance:** `--baseline` produces exit 0 when only baseline violations exist and exit 1 on any new one; SKILL.md Verify contains the gate + standing-violations wording.
 
 ## Phase 3 — Business-rule placement + streaming ledger/policy line (audit 12.1, 12.7; evidence C-2, C-7, W-4, O-2)

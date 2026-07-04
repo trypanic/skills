@@ -320,6 +320,18 @@ A port is an interface (multi-method) **or** a `func` type for a single-method s
 
 File layout: `<context>_port.go`, or group a small cohesive set as `<adapter>.go`; one convention per service. ("No ports for inbound adapters" in ADR-15's spirit applies to request/response handlers, not to push/sink seams.)
 
+## ADR-28: arch-checks is a gate — CI binding and ratchet baseline
+
+`scripts/arch-checks.sh` is a **gate, not a suggestion**. The architecture's payoff — data sources and adapters stay swappable technical detail behind ports, the core stays transport-agnostic — exists only while the dependency rules actually hold, so validation must run where shipping happens (CI), not only where authoring happens: detection without a gate lets detected violations ship, and each shipped violation erodes exactly that swappability.
+
+Binding:
+
+- Wire the script into CI (or the repo's task runner) so it runs on every change that touches Go files; also run it before ending any change that adds, moves, or renames files.
+- In `review` mode, always include the script's findings verbatim in the report — never summarized away.
+- A violation the script already detects that ships anyway is a **process failure to be raised**, not a pre-existing condition to be inherited: when starting work in a repo, run the script once and report standing violations before adding to them.
+
+Brownfield adoption uses a **ratchet baseline** (`--baseline FILE`): a checked-in copy of the script's `--json` report. Violations whose exact check+detail pair appears in the baseline are *standing* — still reported, under a separate heading — and only *new* violations fail the run. The baseline is burned down deliberately and never grows. Operational detail: [`../references/migration.md`](../references/migration.md).
+
 ---
 
 ## Dependency direction

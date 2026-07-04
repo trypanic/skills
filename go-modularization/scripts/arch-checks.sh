@@ -4,7 +4,8 @@ set -u
 
 usage() {
   cat <<'EOF'
-Usage: bash scripts/arch-checks.sh [--format text|json] [--json] [--output FILE] [--help]
+Usage: bash scripts/arch-checks.sh [--format text|json] [--json] [--output FILE]
+                                   [--baseline FILE] [--help]
 
 Validate a Go repo against the go-modularization layout rules. Run from the
 repo root. Non-interactive, read-only: takes no repo input, mutates nothing,
@@ -14,7 +15,16 @@ Options:
   --format text|json  Output format (default: text).
   --json              Shorthand for --format json.
   --output FILE       Write the report to FILE instead of stdout ("-" = stdout).
+  --baseline FILE     Ratchet against FILE, a previous run's --json report.
   -h, --help          Show this help.
+
+Ratchet semantics (--baseline): a violation whose exact check+detail pair
+appears in FILE is "standing" — still listed (text: a separate "## Standing
+violations (baseline)" section; json: an additive "standing" array plus
+summary.standing, both present only when the flag is given) — but only NEW
+violations fail the run. Keep FILE checked in; regenerate it (without
+--baseline) only as standing violations get fixed, so the baseline shrinks
+and never grows.
 
 Prerequisites: bash, find, awk. Go toolchain optional — build/vet/import
 checks are skipped (NOTE on stderr) when neither go.mod nor go.work is at the
@@ -36,24 +46,32 @@ grouping — confirm the context before promoting; never fails the run).
 Output: structured report on stdout (text or json). Diagnostics on stderr.
 Detail lists are capped at 100 entries; exact counts are always in the summary.
 
-Exit codes: 0 = clean, 1 = one or more violations, 2 = bad usage, 3 = missing
-prerequisite (awk/find).
+Exit codes: 0 = clean (with --baseline: no new violations), 1 = one or more
+violations (with --baseline: one or more new violations), 2 = bad usage
+(including a missing or unreadable --baseline FILE), 3 = missing prerequisite
+(awk/find).
 EOF
 }
 
 FORMAT=text
 OUT="-"
+BASELINE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --json) FORMAT=json ;;
     --format) shift; FORMAT="${1:-}";;
     --output) shift; OUT="${1:-}";;
+    --baseline) shift; BASELINE="${1:-}"
+                [ -n "$BASELINE" ] || { echo "Error: --baseline requires a FILE argument" >&2; exit 2; } ;;
     *) usage >&2; exit 2 ;;
   esac
   shift
 done
 case "$FORMAT" in text|json) :;; *) printf 'Error: --format must be text or json, got "%s"\n' "$FORMAT" >&2; exit 2;; esac
+if [ -n "$BASELINE" ] && { [ ! -f "$BASELINE" ] || [ ! -r "$BASELINE" ]; }; then
+  printf 'Error: --baseline file "%s" is missing or unreadable\n' "$BASELINE" >&2; exit 2
+fi
 command -v awk  >/dev/null 2>&1 || { echo "Error: awk not found (required)"  >&2; exit 3; }
 command -v find >/dev/null 2>&1 || { echo "Error: find not found (required)" >&2; exit 3; }
 
@@ -236,19 +254,71 @@ while IFS= read -r d; do
                 printf "%s context \047%s\047: %d countable files (heuristic — confirm context grouping before promoting)\n", dir, s, c[s] } }')
 done < <(find services internal go-pkgs \( -name vendor -o -name node_modules \) -prune -o -type d -print 2>/dev/null)
 
+# 9. Ratchet (--baseline): partition current violations into NEW vs STANDING.
+#    The baseline is a previous run's --json report; membership is the exact
+#    check+detail pair, compared in the escaped form render_json emits (esc()
+#    escapes only \ and ", so a value's closing quote is the first " after an
+#    even number of backslashes). Every "check"/"detail" object in FILE counts
+#    (violations and standing alike, so a ratcheted report re-baselines
+#    faithfully); baseline pairs absent from the current run are simply gone.
+#    Only NEW violations feed the failure verdict; promotions are unaffected.
+standing=""
+if [ -n "$BASELINE" ]; then
+  part=$(printf '%s' "$violations" | awk -F'\t' -v basefile="$BASELINE" '
+    function esc(s){gsub(/\\/,"\\\\",s);gsub(/"/,"\\\"",s);return s}
+    # Scan the JSON string value starting at s[1], keeping escapes as written;
+    # sets EP to the index of the closing quote.
+    function jscan(s,   i,c,out){
+      out=""; i=1
+      while (i <= length(s)) {
+        c=substr(s,i,1)
+        if (c=="\\") { out=out c substr(s,i+1,1); i+=2; continue }
+        if (c=="\"") { EP=i; return out }
+        out=out c; i++
+      }
+      EP=i; return out
+    }
+    BEGIN{
+      while ((getline l < basefile) > 0) buf=buf l "\n"
+      close(basefile)
+      s=buf
+      while ((p=index(s, "{\"check\":\"")) > 0) {
+        s=substr(s, p+10); ck=jscan(s); s=substr(s, EP+1)
+        if (substr(s,1,11) != ",\"detail\":\"") continue
+        s=substr(s,12); dt=jscan(s); s=substr(s, EP+1)
+        base[ck "\t" dt]=1
+      }
+    }
+    /./ { key=esc($1)"\t"esc($2); if (key in base) print "S\t"$0; else print "N\t"$0 }
+  ')
+  violations=$(printf '%s\n' "$part" | awk -F'\t' '$1=="N"{print substr($0,3)}')
+  standing=$(printf '%s\n' "$part"  | awk -F'\t' '$1=="S"{print substr($0,3)}')
+fi
+
 # --- Render report -------------------------------------------------------------
 vcount=$(printf '%s' "$violations" | grep -c . || true)
+scount=$(printf '%s' "$standing"   | grep -c . || true)
 pcount=$(printf '%s' "$promotions" | grep -c . || true)
 CAP=100
 
 render_text() {
   echo "# go-modularization arch-checks"
-  echo "violations: $vcount   promotion-candidates: $pcount"
+  if [ -n "$BASELINE" ]; then
+    echo "violations: $vcount (new)   standing (baseline): $scount   promotion-candidates: $pcount"
+  else
+    echo "violations: $vcount   promotion-candidates: $pcount"
+  fi
   if [ "$vcount" -gt 0 ]; then
     echo
     echo "## Violations"
     printf '%s' "$violations" | grep . | head -n "$CAP" | awk -F'\t' '{printf "- %s: %s\n", $1, $2}'
     [ "$vcount" -gt "$CAP" ] && echo "- ... and $((vcount - CAP)) more (use --json --output FILE for the full list)"
+  fi
+  if [ "$scount" -gt 0 ]; then
+    echo
+    echo "## Standing violations (baseline)"
+    printf '%s' "$standing" | grep . | head -n "$CAP" | awk -F'\t' '{printf "- %s: %s\n", $1, $2}'
+    [ "$scount" -gt "$CAP" ] && echo "- ... and $((scount - CAP)) more"
   fi
   if [ "$pcount" -gt 0 ]; then
     echo
@@ -259,16 +329,26 @@ render_text() {
 }
 
 render_json() {
-  local vj pj trunc
+  local vj pj sj trunc
   vj=$(printf '%s' "$violations" | grep . | head -n "$CAP" \
     | awk -F'\t' 'function esc(s){gsub(/\\/,"\\\\",s);gsub(/"/,"\\\"",s);return s}
         {printf "%s{\"check\":\"%s\",\"detail\":\"%s\"}", (NR>1?",":""), esc($1), esc($2)}')
   pj=$(printf '%s' "$promotions" | grep . | head -n "$CAP" \
     | awk 'function esc(s){gsub(/\\/,"\\\\",s);gsub(/"/,"\\\"",s);return s}
         {printf "%s\"%s\"", (NR>1?",":""), esc($0)}')
-  if [ "$vcount" -gt "$CAP" ] || [ "$pcount" -gt "$CAP" ]; then trunc=true; else trunc=false; fi
-  printf '{"summary":{"violations":%d,"promotion_candidates":%d,"truncated":%s},"violations":[%s],"promotion_candidates":[%s]}\n' \
-    "$vcount" "$pcount" "$trunc" "$vj" "$pj"
+  if [ -n "$BASELINE" ]; then
+    # Additive schema: "standing" + summary.standing appear only with --baseline.
+    sj=$(printf '%s' "$standing" | grep . | head -n "$CAP" \
+      | awk -F'\t' 'function esc(s){gsub(/\\/,"\\\\",s);gsub(/"/,"\\\"",s);return s}
+          {printf "%s{\"check\":\"%s\",\"detail\":\"%s\"}", (NR>1?",":""), esc($1), esc($2)}')
+    if [ "$vcount" -gt "$CAP" ] || [ "$scount" -gt "$CAP" ] || [ "$pcount" -gt "$CAP" ]; then trunc=true; else trunc=false; fi
+    printf '{"summary":{"violations":%d,"standing":%d,"promotion_candidates":%d,"truncated":%s},"violations":[%s],"standing":[%s],"promotion_candidates":[%s]}\n' \
+      "$vcount" "$scount" "$pcount" "$trunc" "$vj" "$sj" "$pj"
+  else
+    if [ "$vcount" -gt "$CAP" ] || [ "$pcount" -gt "$CAP" ]; then trunc=true; else trunc=false; fi
+    printf '{"summary":{"violations":%d,"promotion_candidates":%d,"truncated":%s},"violations":[%s],"promotion_candidates":[%s]}\n' \
+      "$vcount" "$pcount" "$trunc" "$vj" "$pj"
+  fi
 }
 
 if [ "$FORMAT" = json ]; then report=$(render_json); else report=$(render_text); fi
