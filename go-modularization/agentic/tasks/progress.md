@@ -92,3 +92,11 @@ Conventions: consumer = the audited repo (read-only acceptance target); gate evi
 - new surface: `root-internal-occupancy`, `stdlib-shadow-name` (violations); `shared-tier-importer-count` (warning, toolchain-gated).
 - divergences: `min` dropped from the stdlib list (builtin, not a package); shadow-detail template suggests `<name>x/<name>kit` mechanically (`slicesx`) while the doc's canonical example is `slicex` — cosmetic, Phase-10 may normalize; importer-count folds all non-service importers into one "root" consumer class.
 - notes-for-later: **Phase-10 consumer battery: exit 1, 21 violations (bad-migration-name 12, misplaced-script 1, forbidden-folder 2, inner-imports-contracts 2, tags-in-inner-layers 1, root-internal-occupancy 2, stdlib-shadow-name 1) + 7 warnings (streaming-file-loc 1, decorative-state-machine 2, boundary-review 2, shared-tier-importer-count 2).** Phase-10 coherence: SKILL.md "Shared code" flowchart lacks the two-children/≥2-importers wording; Verify check-list missing tags-in-inner-layers, boundary-review, and the three Phase-8 checks.
+
+## Phase 9 — migration/incremental-adoption reference — PASS (attempt 1) — 2026-07-04
+
+- commit: (this commit)
+- files: references/migration.md (stub expanded in place into 8 numbered sections mirroring audit §15: assess-first with two-axis classification [root-cause classes + disposition triage], empirical contexts, outside-in strangler order, ACL-during, locus-first [links placement-rules, no restating], compatibility/rollback, ratchet §7 [Phase-2 mechanism byte-identical], topology changes isolated; scope note removed); SKILL.md (routing row + `migrate` Inputs bullet — read-only-first, no automatic file moves; diff verified to be exactly those two lines); adr/README.md ADR-33 ("semantics first, spelling last"); adr-cheatsheet.md R-33.
+- gate: all common checks + full cumulative asserts passed; consumer unchanged (21 violations + 7 warnings; doc-only phase).
+- divergences: root-cause classification presented two-axis (adds audit §15.1's disposition triage — mechanical / ADR-first / Step 0); ADR-33 carries a calibration note for consistency with ADR-29–32 (no fresh article fetch — no new layering claim).
+- notes-for-later: Phase-10 coherence backlog unchanged + optional `migrate`-mode report shape (defined in migration.md §1) if the Verify template wants it.

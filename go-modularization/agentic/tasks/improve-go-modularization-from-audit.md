@@ -87,8 +87,8 @@ Restore trust before adding new checks. File: `scripts/arch-checks.sh`.
 
 ## Phase 9 — Migration/incremental-adoption reference (audit Section 15)
 
-- [ ] 9.1 Create `references/migration.md` from the audit's Section 15 outline (assess-first with root-cause classes; empirical context identification; outside-in strangler order; ACL-during-migration; state-machine locus-first rule; compatibility/rollback checkpoints; ratchet; topology changes isolated).
-- [ ] 9.2 SKILL.md: routing row ("Adopting the convention in an existing codebase / migrating legacy layout → read references/migration.md"); Inputs section gains a `migrate` argument sketch (assessment report + ordered plan, no auto-moves).
+- [x] 9.1 Create `references/migration.md` from the audit's Section 15 outline (assess-first with root-cause classes; empirical context identification; outside-in strangler order; ACL-during-migration; state-machine locus-first rule; compatibility/rollback checkpoints; ratchet; topology changes isolated).
+- [x] 9.2 SKILL.md: routing row ("Adopting the convention in an existing codebase / migrating legacy layout → read references/migration.md"); Inputs section gains a `migrate` argument sketch (assessment report + ordered plan, no auto-moves).
 - **Acceptance:** migration.md cross-references Phase-2 baseline mechanism and Phase-4 locus rule rather than restating them; `migrate` input documented as read-only-first.
 
 ## Phase 10 — Final validation

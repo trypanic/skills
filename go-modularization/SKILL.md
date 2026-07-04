@@ -25,6 +25,7 @@ This file holds the routing flowcharts and the invariants that apply to **every*
 | Verify after scaffolding or restructuring                    | run [`scripts/arch-checks.sh`](scripts/arch-checks.sh)           |
 | Explain why a rule exists                                    | [`references/adr-cheatsheet.md`](references/adr-cheatsheet.md)   |
 | Service-boundary questions — peer datastores, shared values/enums/config, contract versions | [`references/service-boundaries.md`](references/service-boundaries.md) |
+| Adopting the convention in an existing codebase / migrating a legacy layout | [`references/migration.md`](references/migration.md) |
 
 Exception — no extra read needed when the flowchart below already gives the full canonical path for a single new file and no promotion threshold is near. For anything touching 2+ files, a rename, a promotion, or a new folder: read the task file first.
 
@@ -260,6 +261,7 @@ Optional argument:
 - **`review`** — first detect adoption: adopted iff service `internal/` contains ≥2 of `domain/`, `interactor/`, `ports/` (or single-service equivalent). Not adopted → report "convention not adopted", ask whether to adopt; do **not** flag individual violations or restructure. Adopted → audit and emit the report template from the Verify section (Violations + Promotion reached sections).
 - **`place <description>`** — return the canonical path via the flowchart; read [`references/placement-rules.md`](references/placement-rules.md) when the flowchart line alone doesn't settle it. Unclear → Step 0.
 - **`migration <topology> <verb> <desc>`** — generate a migration filename; `<topology>` ∈ {`shared`, `per-service`}. Read [`references/migrations.md`](references/migrations.md) first.
+- **`migrate`** — incremental adoption of the convention in an existing codebase; **read-only first**: produce an assessment report (arch-checks output + root-cause classification + proposed context map) and an **ordered** migration plan (strangler order), and perform **no automatic file moves** — execution happens later as separate reviewed changes. Read [`references/migration.md`](references/migration.md) first.
 
 ---
 
