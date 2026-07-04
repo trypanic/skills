@@ -167,6 +167,42 @@ Comment examples for classification:
 // Transport reconnect timing may stay adapter-local; business retry eligibility does not.
 ```
 
+## State machines: one enforcement locus
+
+Every state machine has exactly **one declared enforcement locus** — the place
+where an illegal transition actually fails. Two sanctioned loci; pick one,
+never both, never neither:
+
+- **Domain-enforced** — a domain type (`Transition`, `CanTransitionTo`)
+  validates transitions and is invoked on every mutation path; the datastore
+  stores, never judges.
+- **Datastore-enforced** — a datastore guard (stored procedure, conditional
+  update, constraint) rejects illegal moves; domain code treats the store's
+  verdict as authoritative.
+
+**Declaration.** The chosen locus is declared where the state machine is
+defined: a comment atop the transition table plus a line in the owning service
+docs. If the locus is the datastore, say so explicitly — the in-service
+transition table is then a **conformance oracle**, not the enforcer.
+
+**Conformance oracle.** Whichever locus is chosen, a test (or check) MUST
+exercise the declared transition table against the enforcing implementation —
+drive every legal and illegal move and assert agreement — so the declaration
+cannot rot into decoration. When the locus is the datastore, the test drives
+the datastore guards through the table's moves. A transition API
+(`Transition`, `CanTransitionTo`) with zero non-test call sites and no
+conformance test is forbidden — that is the **decorative state machine**
+anti-pattern (SKILL.md).
+
+**Conformance-test naming convention (check exemption).** A conformance test
+is a `_test.go` file explicitly named `*_conformance_test.go`, living beside
+the transition table it exercises. `scripts/arch-checks.sh` flags
+`decorative-state-machine` (report-only) when a `domain/` dir defines
+`Transition`/`CanTransitionTo` with no non-test call sites outside `domain/`
+(self-calls within any `domain/` dir are the pattern itself, not coverage);
+calls from a `*_conformance_test.go` file count as coverage for that check —
+an ordinarily named `_test.go` does not.
+
 ## Inbound adapter rules
 
 | Adapter             | Files                          | Notes                                                     |

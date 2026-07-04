@@ -49,9 +49,9 @@ Restore trust before adding new checks. File: `scripts/arch-checks.sh`.
 
 ## Phase 4 — Enforcement locus / decorative state machine (audit 12.2; evidence C-3)
 
-- [ ] 4.1 placement-rules.md: new section "State machines: one enforcement locus" — audit 12.2 rule wording (domain-enforced vs. datastore-enforced; conformance-oracle requirement; declaration comment + docs).
-- [ ] 4.2 SKILL.md: anti-pattern list gains "decorative state machine" (audit 14.1 wording); gotcha line pointing to the reference section.
-- [ ] 4.3 arch-checks: `decorative-state-machine` report-only check — exported `Transition`/`CanTransitionTo` in `domain/` with zero non-test call sites outside `domain/`.
+- [x] 4.1 placement-rules.md: new section "State machines: one enforcement locus" — audit 12.2 rule wording (domain-enforced vs. datastore-enforced; conformance-oracle requirement; declaration comment + docs).
+- [x] 4.2 SKILL.md: anti-pattern list gains "decorative state machine" (audit 14.1 wording); gotcha line pointing to the reference section.
+- [x] 4.3 arch-checks: `decorative-state-machine` report-only check — exported `Transition`/`CanTransitionTo` in `domain/` with zero non-test call sites outside `domain/`.
 - **Acceptance:** check flags a fixture with a dead transition table; does not flag one whose `Transition` is called from `interactor/` or covered by a `_test.go` explicitly named `*_conformance_test.go` (document the naming convention in 4.1).
 
 ## Phase 5 — Consumer-side contract hygiene + port quality (audit 12.3, 12.4, 12.5; evidence C-1, O-6, O-8, W-11)

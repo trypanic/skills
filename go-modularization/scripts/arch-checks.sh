@@ -42,7 +42,10 @@ filename grammar + up/down pairing (a grammar-failing file with a script
 extension under migrations/ is flagged misplaced-script instead);
 promotion-threshold counts grouped per context stem (report-only heuristic
 grouping — confirm the context before promoting; never fails the run);
-streaming adapter files over ~400 LOC (`streaming-file-loc`, report-only).
+streaming adapter files over ~400 LOC (`streaming-file-loc`, report-only);
+exported Transition/CanTransitionTo under a domain/ dir with no non-test
+call site outside it and no *_conformance_test.go exercising it
+(`decorative-state-machine`, report-only).
 
 Output: structured report on stdout (text or json). Diagnostics on stderr.
 Detail lists are capped at 100 entries; exact counts are always in the summary.
@@ -274,6 +277,51 @@ done < <(
   find . \( -path ./vendor -o -path ./.git -o -name node_modules \) -prune -o \
     -type f -name '*.go' ! -name '*_test.go' ! -name '*.pb.go' ! -name '*_gen.go' \
     \( -path '*/grpc/*' -o -path '*/ws/*' -o -path '*/sse/*' \) -print)
+
+# 8c. Decorative state machine audit (report-only warning): an exported
+#     Transition/CanTransitionTo declared in a domain/ dir needs a call site
+#     that proves an enforcement locus — a non-test .go file outside that
+#     domain dir, or a *_conformance_test.go anywhere (the sanctioned
+#     conformance-oracle naming; ordinary _test.go files never count).
+#     Zero such call sites → the table is decorative (placement-rules
+#     "State machines: one enforcement locus").
+dsm_dirs=""
+while IFS= read -r dd; do
+  [ -n "$dd" ] || continue
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    if grep -Eq '^func (\([^)]*\) )?(Transition|CanTransitionTo)\(' "$f" 2>/dev/null; then
+      dsm_dirs+="$dd"$'\n'
+      break
+    fi
+  done < <(find "$dd" \( -name vendor -o -name node_modules \) -prune -o \
+             -type f -name '*.go' ! -name '*_test.go' -print 2>/dev/null)
+done < <(find . \( -name vendor -o -path ./.git -o -name node_modules \) -prune -o \
+           -type d -name domain -print 2>/dev/null)
+if [ -n "$dsm_dirs" ]; then
+  # One repo walk for candidate call sites: a .Transition( / .CanTransitionTo(
+  # occurrence on a non-comment line, in non-test .go files plus
+  # *_conformance_test.go files.
+  dsm_callers=$(find . \( -name vendor -o -path ./.git -o -name node_modules \) -prune -o \
+      -type f -name '*.go' \( ! -name '*_test.go' -o -name '*_conformance_test.go' \) -print 2>/dev/null \
+    | while IFS= read -r f; do
+        grep -E '\.(Transition|CanTransitionTo)\(' "$f" 2>/dev/null \
+          | grep -Evq '^[[:space:]]*//' && printf '%s\n' "$f"
+      done)
+  while IFS= read -r dd; do
+    [ -n "$dd" ] || continue
+    hit=""
+    while IFS= read -r cf; do
+      [ -n "$cf" ] || continue
+      case "$cf" in
+        *_conformance_test.go) hit=1; break ;;   # oracle counts anywhere, incl. inside a domain dir
+        */domain/*) ;;                           # calls from ANY domain dir are self-validation, not an enforcement locus
+        *) hit=1; break ;;
+      esac
+    done < <(printf '%s\n' "$dsm_callers")
+    [ -n "$hit" ] || add_w "decorative-state-machine" "$dd defines Transition/CanTransitionTo with no non-test call sites outside domain/ (heuristic — declare one enforcement locus + conformance test, or delete; see placement-rules)"
+  done < <(printf '%s\n' "$dsm_dirs")
+fi
 
 # 9. Ratchet (--baseline): partition current violations into NEW vs STANDING.
 #    The baseline is a previous run's --json report; membership is the exact

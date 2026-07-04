@@ -342,6 +342,21 @@ Streaming adapters use the same rule. A per-connection session may hold and muta
 
 Hexagonal-calibration note: no divergence from the reference architecture lens. Graça's Explicit Architecture places ports inside the business logic, adapters outside, and application/domain logic in the core; Netflix's production case study keeps business logic in interactors and persistence/transport details swappable behind adapters. This ADR applies those same dependency and responsibility boundaries to adapter-side extraction and streaming sequence points.
 
+## ADR-30: One enforcement locus per state machine
+
+Every state machine has exactly **one declared enforcement locus** — the place where an illegal transition actually fails. Two sanctioned loci; a state machine picks one, never both, never neither:
+
+- **Domain-enforced** — a domain type (`Transition`, `CanTransitionTo`) validates transitions and is invoked on every mutation path; the datastore stores, never judges.
+- **Datastore-enforced** — a datastore guard (stored procedure, conditional update, constraint) rejects illegal moves; domain code treats the store's verdict as authoritative.
+
+**Declaration:** the chosen locus is declared where the state machine is defined — a comment atop the transition table and a line in the owning service docs. If the locus is the datastore, say so explicitly; the in-service transition table is then a **conformance oracle**, not the enforcer.
+
+**Conformance oracle:** whichever locus is chosen, a test (or check) MUST exercise the declared transition table against the enforcing implementation — drive every legal and illegal move and assert agreement — so the declaration cannot rot into decoration. Naming convention: a conformance test is a `_test.go` file explicitly named `*_conformance_test.go`, living beside the transition table it exercises. A transition API (`Transition`, `CanTransitionTo`) with zero non-test call sites and no conformance test is forbidden.
+
+**Anti-pattern — decorative state machine:** a domain transition table nothing calls. It documents nothing reliably (it drifts), and it actively misleads: readers and agents assume illegal transitions are rejected at runtime. Wire it, test it against the real locus, or delete it. `scripts/arch-checks.sh` reports `decorative-state-machine` (report-only) when a `domain/` dir defines `Transition`/`CanTransitionTo` with no non-test call sites outside `domain/` (self-calls within any `domain/` dir do not count) and no `*_conformance_test.go` exercising it.
+
+Hexagonal-calibration note: Graça's Explicit Architecture and the Netflix case study both keep business rules in the core and treat persistence as a swappable detail behind ports — the domain-enforced locus is their default reading. This ADR **deliberately diverges** by sanctioning a datastore-enforced locus as first-class (common under SP-only data-access policies): when the store judges, the declaration + conformance oracle contain the divergence — the core still owns the statement of the rule, and a test binds statement to enforcement, preserving the articles' goal that the rule stays explicit and testable rather than buried, unstated, in a replaceable adapter.
+
 ---
 
 ## Dependency direction

@@ -149,6 +149,7 @@ Concrete corrections to defaults that are wrong here. Read before acting — eac
 - A **reconciler/sweeper coupled to one adapter's state** (a session registry, a lease table, a cache) lives **in that adapter's package** (`grpc/<name>_reclaim.go`), started from `cmd/` — NOT in `cli/`/`consumer/`, which would sever it from the state it repairs. Independent scheduled jobs still → `cli/`; event/poll → `consumer/`.
 - A **port may be a `func` type** for a single-method seam (`type Emit func(...) error`); multi-method ports stay interfaces.
 - **Translation / ACL** (domain↔external-wire mapping) lives with the adapter that owns that wire format — inline, `<adapter>_translation.go`, or a named cluster inside a promoted adapter folder. Never a top-level `mapper/` or `dto/` (both forbidden). The mapping is pure (no I/O); the HTTP/stream call is its sibling.
+- A **state machine has exactly one enforcement locus** — domain-enforced or datastore-enforced, never both, never neither — declared at the transition table + service docs and proven by a `*_conformance_test.go` beside the table. Read "State machines: one enforcement locus" in [`references/placement-rules.md`](references/placement-rules.md) before adding a `Transition`/`CanTransitionTo` API.
 
 ## Decision flowcharts
 
@@ -218,6 +219,7 @@ When generating or reviewing layout, reject:
 - Top-level `config/`, `middleware/`, `events/`, `messages/`, `dto/`.
 - Go files under `scripts/`.
 - Forcing infra into a remote SDK repo when `go-pkgs/infra/` is the better default.
+- **Decorative state machine** — a transition table / `CanTransitionTo` in `domain/` that no production code path consults; the datastore or ad-hoc writes actually gate transitions. Declare one enforcement locus and add the conformance oracle (`*_conformance_test.go`), or delete the table — see "State machines: one enforcement locus" in [`references/placement-rules.md`](references/placement-rules.md).
 
 Cite the rule when refusing. Offer the canonical alternative. If none fits cleanly → Step 0.
 
