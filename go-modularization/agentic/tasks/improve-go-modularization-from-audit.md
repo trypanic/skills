@@ -81,8 +81,8 @@ Restore trust before adding new checks. File: `scripts/arch-checks.sh`.
 
 ## Phase 8 — Shared-tier occupancy + naming hygiene (audit 12.9; evidence B-6, W-6, S-4)
 
-- [ ] 8.1 shared-code.md: two-children rule hardened; ≥2-verified-importers requirement; stdlib-shadow + business-name rules (audit 12.9 wording).
-- [ ] 8.2 arch-checks: `root-internal-occupancy` (any root-`internal/` child ≠ `contracts|kernel`), `shared-tier-importer-count` (go list-based, report-only), `stdlib-shadow-name`.
+- [x] 8.1 shared-code.md: two-children rule hardened; ≥2-verified-importers requirement; stdlib-shadow + business-name rules (audit 12.9 wording).
+- [x] 8.2 arch-checks: `root-internal-occupancy` (any root-`internal/` child ≠ `contracts|kernel`), `shared-tier-importer-count` (go list-based, report-only), `stdlib-shadow-name`.
 - **Acceptance:** occupancy check flags a fixture `internal/util/`; importer-count marks a single-importer root package; stdlib-shadow flags a shared package named `slices`.
 
 ## Phase 9 — Migration/incremental-adoption reference (audit Section 15)

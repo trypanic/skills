@@ -56,7 +56,17 @@ references/service-boundaries.md): the same datastore-identifier string
 constant (const name matching table|collection|bucket|queue|topic|index,
 case-insensitive) declared in two or more services, and env struct-tag
 names (env:"...") sharing an identical suffix after the first _-separated
-token across two or more services (possible silent config mirror).
+token across two or more services (possible silent config mirror);
+root internal/ occupancy (root-internal-occupancy — any directory child of
+root internal/ other than contracts/ and kernel/ is a violation; see
+references/shared-code.md); stdlib-shadow names in shared tiers
+(stdlib-shadow-name — a directory directly under root internal/ or go-pkgs/,
+or a go-pkgs/infra/ child, whose basename equals a Go stdlib package
+basename from an embedded representative list; use <name>x / <name>kit);
+shared-tier importer count (shared-tier-importer-count, report-only, needs
+the go toolchain — each in-repo package under root internal/ or go-pkgs/
+with fewer than two distinct importing services, or with no in-repo
+importers at all, is warned; shared tiers require >=2 verified importers).
 
 Output: structured report on stdout (text or json). Diagnostics on stderr.
 Detail lists are capped at 100 entries; exact counts are always in the summary.
@@ -120,6 +130,37 @@ for d in config middleware events messages; do
   done
 done
 
+# 1c. Root internal/ occupancy: exactly two directory children allowed —
+#     contracts/ and kernel/ (shared-code.md "Root internal/"). Files at the
+#     internal/ top level (go.mod, go.sum, doc files) never count; only
+#     directories violate. vendor/node_modules pruned.
+if [ -d internal ]; then
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    case "$(basename "$d")" in contracts|kernel|vendor|node_modules) continue ;; esac
+    add_v "root-internal-occupancy" "$d (root internal/ admits only contracts/ and kernel/ — route to go-pkgs/, kernel/, or the owning service)"
+  done < <(find internal -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+fi
+
+# 1d. Stdlib-shadow names in shared tiers: a package directory directly under
+#     root internal/ or go-pkgs/ (plus go-pkgs/infra/ children) must not take
+#     a Go stdlib package's basename — shadowing reads as stdlib at call
+#     sites; use <name>x / <name>kit instead (shared-code.md). The embedded
+#     list is representative, not exhaustive.
+GO_STDLIB_NAMES="slices maps strings errors time context sync io os net http sort math rand fmt log testing bytes bufio path filepath url json xml sql regexp reflect hash crypto tls big list heap ring embed unicode utf8 atomic signal exec user mail smtp template html image color png jpeg gif zip tar gzip zlib flate bzip2 csv base64 hex binary gob pem asn1 aes des rsa sha1 sha256 sha512 md5 hmac rc4 dsa ecdsa ed25519 elliptic x509 pkix bits cmplx iter cmp"
+while IFS= read -r d; do
+  [ -n "$d" ] || continue
+  b=$(basename "$d")
+  case " $GO_STDLIB_NAMES " in
+    *" $b "*) add_v "stdlib-shadow-name" "$d shadows Go stdlib package \"$b\" — use ${b}x / ${b}kit naming" ;;
+  esac
+done < <({
+  [ -d internal ]      && find internal      -mindepth 1 -maxdepth 1 -type d 2>/dev/null
+  [ -d go-pkgs ]       && find go-pkgs       -mindepth 1 -maxdepth 1 -type d 2>/dev/null
+  [ -d go-pkgs/infra ] && find go-pkgs/infra -mindepth 1 -maxdepth 1 -type d 2>/dev/null
+  true
+})
+
 # Go-toolchain checks need a root module (go.mod) or a workspace (go.work).
 have_mod=0;  [ -f go.mod ]  && have_mod=1
 have_work=0; [ -f go.work ] && have_work=1
@@ -172,13 +213,18 @@ fi
 # 4. Import invariants — `go list ./...` per module dir, analyzed by awk. Keyed
 #    on each package's on-disk Dir (relative to repo root), so the checks are
 #    identical under single-module (A) and multi-module workspace (B) topologies.
+#    The awk block emits "check<TAB>detail" violation lines; report-only
+#    findings computed from the same import graph (shared-tier-importer-count)
+#    are prefixed "W<TAB>" and routed to the warnings channel by the reader.
 if [ "$run_go" -eq 1 ]; then
   root=$(pwd)
   dump=$(for d in $scan_dirs; do ( cd "$d" && go list -f '{{.ImportPath}}{{"\t"}}{{.Dir}}{{"\t"}}{{join .Imports " "}}' ./... 2>/dev/null ); done)
   while IFS= read -r line; do
     [ -z "$line" ] && continue
-    check="${line%%$'\t'*}"; detail="${line#*$'\t'}"
-    add_v "$check" "$detail"
+    case "$line" in
+      W$'\t'*) rest="${line#W$'\t'}"; add_w "${rest%%$'\t'*}" "${rest#*$'\t'}" ;;
+      *)       add_v "${line%%$'\t'*}" "${line#*$'\t'}" ;;
+    esac
   done < <(printf '%s\n' "$dump" | awk -F'\t' -v root="$root" '
     function svc(p,   s){ if (!match(p, /(^|\/)services\//)) return ""; s = substr(p, RSTART+RLENGTH); sub(/\/.*/, "", s); return s }
     function layer(p){ if (p ~ "/domain(/|$)") return "domain"; if (p ~ "/interactor(/|$)") return "interactor"; if (p ~ "/ports(/|$)") return "ports"; return "inner" }
@@ -211,6 +257,32 @@ if [ "$run_go" -eq 1 ]; then
       # report. One line per import edge; only the detail text is grouped.
       for(a=2;a<=niic;a++){ t=iic[a]; b=a-1; while(b>=1 && iic[b]>t){ iic[b+1]=iic[b]; b-- } iic[b+1]=t }
       for(a=1;a<=niic;a++) print iic[a]
+      # Shared-tier importer count (report-only; "W\t"-prefixed lines go to
+      # the warnings channel). Reuses the same in-repo import graph: for each
+      # package under ROOT internal/ or go-pkgs/, count distinct consumer
+      # classes — one per importing service, plus "root" for any importer
+      # outside services/. Fewer than two classes means the shared-tier
+      # admission bar (>=2 verified importing services) is not met.
+      for(k=1;k<=cnt;k++){
+        jp=order[k]; jpr=relOf[jp]
+        n=split(impsOf[jp], imps, " ")
+        for(i=1;i<=n;i++){
+          im=imps[i]; if(!(im in relOf)) continue
+          imr=relOf[im]
+          if (imr !~ /^internal(\/|$)/ && imr !~ /^go-pkgs(\/|$)/) continue
+          cls=svc(jpr); if(cls=="") cls="root"
+          nimp[im]++
+          if(!((im SUBSEP cls) in seenc)){ seenc[im,cls]=1; ncls[im]++; if(!(im in firstc)) firstc[im]=cls }
+        }
+      }
+      for(k=1;k<=cnt;k++){
+        ip=order[k]; ipr=relOf[ip]
+        if (ipr !~ /^internal(\/|$)/ && ipr !~ /^go-pkgs(\/|$)/) continue
+        if (nimp[ip]+0 == 0)
+          print "W\tshared-tier-importer-count\t" ipr " has no in-repo importers (heuristic — dead shared code or external-only; verify)"
+        else if (ncls[ip]+0 < 2)
+          print "W\tshared-tier-importer-count\t" ipr " has a single importing service (" firstc[ip] ") (heuristic — shared tier requires >=2 verified importers; move into its consumer)"
+      }
     }')
 fi
 

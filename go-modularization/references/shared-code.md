@@ -14,6 +14,17 @@ Read this file before adding or moving code under `go-pkgs/` or root
 - Stdlib-only ideal. No business logic. No IO.
 - Must never contain business types, service config shapes, or imports from
   `services/...` or root `internal/`.
+- **Never shadow a stdlib name.** A shared package (any shared tier: `go-pkgs/`,
+  root `internal/`) must not take a Go standard-library package's name
+  (`slices`, `maps`, `strings`, `errors`, `time`, ...). A shadowing name reads
+  as stdlib at every call site and forces aliasing on import — use the
+  `<domain>x`/`<domain>kit` forms above (`slicex`, never `slices`). Enforced by
+  `scripts/arch-checks.sh` as `stdlib-shadow-name`.
+- **Generic-utility names only.** A `go-pkgs/` package name must be a
+  generic-utility name, never a business/domain noun. A business noun in
+  `go-pkgs/` is mis-tiered, not mis-named: the code belongs in
+  `internal/kernel/` (if it is a shared business primitive meeting the kernel
+  admission criteria below) or inside the owning service.
 
 ## Reusable infrastructure — placement precedence
 
@@ -39,7 +50,13 @@ always `go-pkgs/infra/`.
 
 ## Root internal/ (monorepo, two folders only)
 
-Root `internal/` is for **cross-service** sharing — two folders only:
+Root `internal/` is for **cross-service** sharing and admits **exactly two
+children**: `contracts/` and `kernel/`. Anything else is a violation
+regardless of content — this is a hard occupancy rule, not a judgment call.
+Route a would-be third child by its nature: a generic utility goes to
+`go-pkgs/`; a shared business primitive meeting the kernel admission criteria
+goes to `internal/kernel/`; single-consumer code moves into the owning
+service. Enforced by `scripts/arch-checks.sh` as `root-internal-occupancy`.
 
 - `internal/contracts/` — **cross-service** event/message wire payloads (shared
   by 2+ services). File form: `<subject>_<verb>_event.go` (e.g.
@@ -52,6 +69,16 @@ Root `internal/` is for **cross-service** sharing — two folders only:
 
 Forbidden names for cross-service shared payloads: `internal/messages/`,
 `internal/events/`, `internal/dto/`.
+
+## Shared-tier admission: ≥2 verified importers
+
+Code enters a shared tier (root `internal/`, `go-pkgs/`) only with **at least
+two actual importing services today, verified by import listing** — "will be
+shared someday" does not qualify. A shared package with a single importing
+service is demoted: move it into its one consumer. `scripts/arch-checks.sh`
+reports the importer count of every shared-tier package as
+`shared-tier-importer-count` (report-only warning; a zero-importer shared
+package is flagged as possible dead shared code).
 
 ## Contract scope — three tiers (not just root)
 
