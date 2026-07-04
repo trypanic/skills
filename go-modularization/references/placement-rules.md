@@ -134,6 +134,39 @@ context, a connection pool, a subscription), or needs its own client/auth/sessio
 init or its own retry/rate-limit infra files. A "provider-specific file" =
 a non-test `.go` file only that provider needs.
 
+## Business-rule placement: adapters decide nothing
+
+An adapter may **observe, extract, encode, decode, transport, and persist**; it
+may not **decide**. Operational test: if a rule answers "what is true about the
+business object" or "what should happen next" (a status derivation, a
+price/quantity policy, a credit movement, a retry disposition), it belongs in
+`domain/` (pure rules) or `interactor/` (workflow policy) — even when its inputs
+come from adapter-side mechanics.
+
+The adapter returns raw signals: booleans, counts, raw strings, presence flags,
+wire frames, storage rows. An inner layer interprets them. When mechanics and
+interpretation are interleaved in one function, split at the signal: extraction
+stays, interpretation moves. Sequencing that must interleave with transport I/O
+may remain adapter-side only if each decision point delegates to an inner-layer
+function.
+
+Comment examples for classification:
+
+```go
+// Status-derivation ladder over extracted flags/raw strings -> domain.
+// Adapter: ExtractAvailabilitySignals(...)
+// Domain:  ClassifyAvailability(signals)
+
+// Credit release on settlement inside a stream server -> interactor method.
+// Adapter keeps recv/send ordering, then calls interactor.SettleAndReleaseCredit(...).
+
+// Selector table, CSS/XPath strings, field-presence probes -> adapter.
+// They describe how to observe an external surface, not what the observation means.
+
+// Retry/backoff formula for a domain retry disposition -> domain.
+// Transport reconnect timing may stay adapter-local; business retry eligibility does not.
+```
+
 ## Inbound adapter rules
 
 | Adapter             | Files                          | Notes                                                     |
@@ -165,12 +198,18 @@ grpc/
   <name>_reclaim.go     # reconciler(s) coupled to the registry (see below)
 ```
 
-The per-connection session object MAY hold a domain entity (a credit ledger)
-and implement a driven port (a push/sink the interactor calls) — that is
-expected for a streaming server, not a layering violation. It MUST hold **no
-business rules**; those stay in `domain/` and `interactor/`. The generated wire
-types stay inside `grpc/` (or `internal/contracts/**/v<N>`); never let them reach
-`ports/`, `interactor/`, or `domain/`.
+The per-connection session object MAY hold a domain entity (a credit ledger),
+mutate it as instructed, and implement a driven port (a push/sink the interactor
+calls) — that is expected for a streaming server, not a layering violation. It
+may not decide **when or why** the entity moves. Decisions such as "release on
+settlement", "reserve on reattach", or "which lifecycle branch on connection
+loss" are interactor policy — expose them as interactor methods the adapter
+calls at its sequence points. The adapter keeps the ordering; the interactor
+keeps the policy. A reconciler repairing adapter-owned registry state may decide
+over that state, but any durable transition it triggers goes through an
+interactor. The generated wire types stay inside `grpc/` (or
+`internal/contracts/**/v<N>`); never let them reach `ports/`, `interactor/`, or
+`domain/`.
 
 A stream **client** to a single upstream is an outbound adapter: `grpc/client.go`
 (or `external_services/<provider>/` when it is one provider among several).

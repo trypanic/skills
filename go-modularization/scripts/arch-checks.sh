@@ -41,10 +41,14 @@ files — non-Go services — are skipped); no Go under scripts/; migration
 filename grammar + up/down pairing (a grammar-failing file with a script
 extension under migrations/ is flagged misplaced-script instead);
 promotion-threshold counts grouped per context stem (report-only heuristic
-grouping — confirm the context before promoting; never fails the run).
+grouping — confirm the context before promoting; never fails the run);
+streaming adapter files over ~400 LOC (`streaming-file-loc`, report-only).
 
 Output: structured report on stdout (text or json). Diagnostics on stderr.
 Detail lists are capped at 100 entries; exact counts are always in the summary.
+Report-only findings render under "## Report-only findings" (text) and an
+always-present "warnings" array + summary.warnings (json); like promotion
+candidates, they never affect the exit code and are never baselined.
 
 Exit codes: 0 = clean (with --baseline: no new violations), 1 = one or more
 violations (with --baseline: one or more new violations), 2 = bad usage
@@ -77,10 +81,14 @@ command -v find >/dev/null 2>&1 || { echo "Error: find not found (required)" >&2
 
 diag() { printf '%s\n' "$*" >&2; }   # diagnostics → stderr
 
-# Violations accumulate as TSV "check<TAB>detail" lines; promotions report-only.
+# Violations accumulate as TSV "check<TAB>detail" lines; warnings (report-only,
+# never affect the exit code, never baselined) use the same TSV shape;
+# promotions are report-only plain lines.
 violations=""
+warnings=""
 promotions=""
 add_v() { violations+="$1"$'\t'"$2"$'\n'; }
+add_w() { warnings+="$1"$'\t'"$2"$'\n'; }
 add_p() { promotions+="$1"$'\n'; }
 
 # 1. Forbidden folder names anywhere (vendor/.git/node_modules pruned).
@@ -254,6 +262,19 @@ while IFS= read -r d; do
                 printf "%s context \047%s\047: %d countable files (heuristic — confirm context grouping before promoting)\n", dir, s, c[s] } }')
 done < <(find services internal go-pkgs \( -name vendor -o -name node_modules \) -prune -o -type d -print 2>/dev/null)
 
+# 8b. Streaming adapter LOC audit (report-only warning): one non-test,
+#     non-generated file above the threshold means the stream adapter should
+#     split by responsibility.
+STREAM_LOC_MAX=400
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  n=$(awk 'END{print NR+0}' "$f")
+  [ "$n" -gt "$STREAM_LOC_MAX" ] && add_w "streaming-file-loc" "$f ($n lines > $STREAM_LOC_MAX — split by responsibility, see placement-rules streaming section)"
+done < <(
+  find . \( -path ./vendor -o -path ./.git -o -name node_modules \) -prune -o \
+    -type f -name '*.go' ! -name '*_test.go' ! -name '*.pb.go' ! -name '*_gen.go' \
+    \( -path '*/grpc/*' -o -path '*/ws/*' -o -path '*/sse/*' \) -print)
+
 # 9. Ratchet (--baseline): partition current violations into NEW vs STANDING.
 #    The baseline is a previous run's --json report; membership is the exact
 #    check+detail pair, compared in the escaped form render_json emits (esc()
@@ -298,15 +319,16 @@ fi
 # --- Render report -------------------------------------------------------------
 vcount=$(printf '%s' "$violations" | grep -c . || true)
 scount=$(printf '%s' "$standing"   | grep -c . || true)
+wcount=$(printf '%s' "$warnings"   | grep -c . || true)
 pcount=$(printf '%s' "$promotions" | grep -c . || true)
 CAP=100
 
 render_text() {
   echo "# go-modularization arch-checks"
   if [ -n "$BASELINE" ]; then
-    echo "violations: $vcount (new)   standing (baseline): $scount   promotion-candidates: $pcount"
+    echo "violations: $vcount (new)   standing (baseline): $scount   warnings: $wcount   promotion-candidates: $pcount"
   else
-    echo "violations: $vcount   promotion-candidates: $pcount"
+    echo "violations: $vcount   warnings: $wcount   promotion-candidates: $pcount"
   fi
   if [ "$vcount" -gt 0 ]; then
     echo
@@ -320,6 +342,12 @@ render_text() {
     printf '%s' "$standing" | grep . | head -n "$CAP" | awk -F'\t' '{printf "- %s: %s\n", $1, $2}'
     [ "$scount" -gt "$CAP" ] && echo "- ... and $((scount - CAP)) more"
   fi
+  if [ "$wcount" -gt 0 ]; then
+    echo
+    echo "## Report-only findings"
+    printf '%s' "$warnings" | grep . | head -n "$CAP" | awk -F'\t' '{printf "- %s: %s\n", $1, $2}'
+    [ "$wcount" -gt "$CAP" ] && echo "- ... and $((wcount - CAP)) more"
+  fi
   if [ "$pcount" -gt 0 ]; then
     echo
     echo "## Promotion candidates (report-only)"
@@ -329,8 +357,11 @@ render_text() {
 }
 
 render_json() {
-  local vj pj sj trunc
+  local vj pj sj wj trunc
   vj=$(printf '%s' "$violations" | grep . | head -n "$CAP" \
+    | awk -F'\t' 'function esc(s){gsub(/\\/,"\\\\",s);gsub(/"/,"\\\"",s);return s}
+        {printf "%s{\"check\":\"%s\",\"detail\":\"%s\"}", (NR>1?",":""), esc($1), esc($2)}')
+  wj=$(printf '%s' "$warnings" | grep . | head -n "$CAP" \
     | awk -F'\t' 'function esc(s){gsub(/\\/,"\\\\",s);gsub(/"/,"\\\"",s);return s}
         {printf "%s{\"check\":\"%s\",\"detail\":\"%s\"}", (NR>1?",":""), esc($1), esc($2)}')
   pj=$(printf '%s' "$promotions" | grep . | head -n "$CAP" \
@@ -341,13 +372,13 @@ render_json() {
     sj=$(printf '%s' "$standing" | grep . | head -n "$CAP" \
       | awk -F'\t' 'function esc(s){gsub(/\\/,"\\\\",s);gsub(/"/,"\\\"",s);return s}
           {printf "%s{\"check\":\"%s\",\"detail\":\"%s\"}", (NR>1?",":""), esc($1), esc($2)}')
-    if [ "$vcount" -gt "$CAP" ] || [ "$scount" -gt "$CAP" ] || [ "$pcount" -gt "$CAP" ]; then trunc=true; else trunc=false; fi
-    printf '{"summary":{"violations":%d,"standing":%d,"promotion_candidates":%d,"truncated":%s},"violations":[%s],"standing":[%s],"promotion_candidates":[%s]}\n' \
-      "$vcount" "$scount" "$pcount" "$trunc" "$vj" "$sj" "$pj"
+    if [ "$vcount" -gt "$CAP" ] || [ "$scount" -gt "$CAP" ] || [ "$wcount" -gt "$CAP" ] || [ "$pcount" -gt "$CAP" ]; then trunc=true; else trunc=false; fi
+    printf '{"summary":{"violations":%d,"standing":%d,"warnings":%d,"promotion_candidates":%d,"truncated":%s},"violations":[%s],"standing":[%s],"warnings":[%s],"promotion_candidates":[%s]}\n' \
+      "$vcount" "$scount" "$wcount" "$pcount" "$trunc" "$vj" "$sj" "$wj" "$pj"
   else
-    if [ "$vcount" -gt "$CAP" ] || [ "$pcount" -gt "$CAP" ]; then trunc=true; else trunc=false; fi
-    printf '{"summary":{"violations":%d,"promotion_candidates":%d,"truncated":%s},"violations":[%s],"promotion_candidates":[%s]}\n' \
-      "$vcount" "$pcount" "$trunc" "$vj" "$pj"
+    if [ "$vcount" -gt "$CAP" ] || [ "$wcount" -gt "$CAP" ] || [ "$pcount" -gt "$CAP" ]; then trunc=true; else trunc=false; fi
+    printf '{"summary":{"violations":%d,"warnings":%d,"promotion_candidates":%d,"truncated":%s},"violations":[%s],"warnings":[%s],"promotion_candidates":[%s]}\n' \
+      "$vcount" "$wcount" "$pcount" "$trunc" "$vj" "$wj" "$pj"
   fi
 }
 

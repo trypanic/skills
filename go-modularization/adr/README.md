@@ -332,6 +332,16 @@ Binding:
 
 Brownfield adoption uses a **ratchet baseline** (`--baseline FILE`): a checked-in copy of the script's `--json` report. Violations whose exact check+detail pair appears in the baseline are *standing* — still reported, under a separate heading — and only *new* violations fail the run. The baseline is burned down deliberately and never grows. Operational detail: [`../references/migration.md`](../references/migration.md).
 
+## ADR-29: Adapters decide nothing; business policy stays inside the core
+
+Adapters are technical edges. They may observe, extract, encode, decode, transport, and persist; they do not decide business truth or next action. If a rule answers "what is true about the business object" or "what should happen next" — status derivation, price/quantity policy, credit movement, retry disposition — it belongs in `domain/` when it is pure domain logic, or `interactor/` when it is workflow policy.
+
+The adapter/core boundary is the raw-signal boundary. Adapters return booleans, counts, raw strings, presence flags, wire frames, and storage rows; inner layers interpret them. When mechanics and interpretation are interleaved, split at the signal. Transport sequencing that must interleave with I/O may remain adapter-side only when each decision point delegates to an inner-layer method.
+
+Streaming adapters use the same rule. A per-connection session may hold and mutate a domain entity, such as a credit ledger, as instructed by the interactor. It may not decide when or why the entity moves. The adapter keeps ordering; the interactor keeps policy. A reconciler repairing adapter-owned registry state may decide over that registry, but durable transitions still go through an interactor. `scripts/arch-checks.sh` reports `streaming-file-loc` when one non-test file under `grpc/`, `ws/`, or `sse/` exceeds ~400 LOC, because that is the point where the edge usually starts mixing transport, translation, registry, and policy.
+
+Hexagonal-calibration note: no divergence from the reference architecture lens. Graça's Explicit Architecture places ports inside the business logic, adapters outside, and application/domain logic in the core; Netflix's production case study keeps business logic in interactors and persistence/transport details swappable behind adapters. This ADR applies those same dependency and responsibility boundaries to adapter-side extraction and streaming sequence points.
+
 ---
 
 ## Dependency direction

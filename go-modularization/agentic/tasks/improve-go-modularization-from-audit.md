@@ -41,10 +41,10 @@ Restore trust before adding new checks. File: `scripts/arch-checks.sh`.
 
 ## Phase 3 — Business-rule placement + streaming ledger/policy line (audit 12.1, 12.7; evidence C-2, C-7, W-4, O-2)
 
-- [ ] 3.1 SKILL.md: new invariant block "Adapters decide nothing" using audit 12.1 draft wording (observe/extract/encode/decode/transport/persist vs. decide; raw-signal boundary; interleave-split rule).
-- [ ] 3.2 placement-rules.md: expand with the operational test + the sequencing exception (adapter keeps ordering, inner layer keeps policy).
-- [ ] 3.3 placement-rules.md streaming section + SKILL.md gotcha: replace the bare "MUST hold no business rules" with audit 12.7 wording (ledger mutation vs. movement decisions; reconciler exception; interactor-method-at-sequence-points pattern).
-- [ ] 3.4 arch-checks: add `streaming-file-loc` report-only check (~400 LOC threshold for non-test files under `grpc/`, `ws/`, `sse/`).
+- [x] 3.1 SKILL.md: new invariant block "Adapters decide nothing" using audit 12.1 draft wording (observe/extract/encode/decode/transport/persist vs. decide; raw-signal boundary; interleave-split rule).
+- [x] 3.2 placement-rules.md: expand with the operational test + the sequencing exception (adapter keeps ordering, inner layer keeps policy).
+- [x] 3.3 placement-rules.md streaming section + SKILL.md gotcha: replace the bare "MUST hold no business rules" with audit 12.7 wording (ledger mutation vs. movement decisions; reconciler exception; interactor-method-at-sequence-points pattern).
+- [x] 3.4 arch-checks: add `streaming-file-loc` report-only check (~400 LOC threshold for non-test files under `grpc/`, `ws/`, `sse/`).
 - **Acceptance:** an agent reading only SKILL.md can classify these four cases correctly (add as comment-examples in placement-rules): status-derivation ladder in an extractor (→ domain), credit release on settlement in a stream server (→ interactor method), selector table (→ adapter), retry/backoff formula (→ domain). LOC check fires on a fixture file >400 LOC.
 
 ## Phase 4 — Enforcement locus / decorative state machine (audit 12.2; evidence C-3)
