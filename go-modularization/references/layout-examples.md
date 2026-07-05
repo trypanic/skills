@@ -249,13 +249,14 @@ satisfy `ports.TaskSink` — expected for a streaming server (R-27), not a
 violation. The dependency stays `grpc → ports`, never `interactor → grpc`. A
 stream **client** to one upstream is outbound: `grpc/client.go`.
 
-Process-manager interactor (R-24) — role-named, no `interactor_` prefix, beside
-the thin use cases:
+Coordinator layer (R-34) — process managers, role-named, in their own inner
+layer beside the use-case interactors:
 
 ```text
 internal/
   interactor/
     interactor_session.go      # use case (admission gate, one workflow step)
+  coordinator/
     scheduler.go               # process manager: credit-bounded dispatch loop
     reconnector.go             # process manager: session-lifetime reconnect loop
     pipeline.go                # process manager: multi-layer scrape pipeline
@@ -265,7 +266,7 @@ Proto-leak counter-example (R-25) — the generated contract must NOT cross the
 adapter boundary:
 
 ```go
-// internal/interactor/pipeline.go
+// internal/coordinator/pipeline.go
 import (
     // FORBIDDEN (R-25): generated wire contract in an inner layer.
     // arch-checks.sh flags: inner-imports-contracts.
@@ -275,15 +276,160 @@ import (
 func (p *Pipeline) Run(ctx context.Context, t *coordinationv1.AssignTask) error // leaks the wire type inward
 ```
 
-Fix — map at the adapter edge; the interactor speaks domain types:
+Fix — map at the adapter edge; the inner layer speaks domain types:
 
 ```go
 // internal/grpc/translation.go  (adapter)
 func toAssignment(a *coordinationv1.AssignTask) domain.Assignment { ... }
 
-// internal/interactor/pipeline.go  (inner — no proto import)
+// internal/coordinator/pipeline.go  (inner — no proto import)
 func (p *Pipeline) Run(ctx context.Context, a domain.Assignment) error
 ```
+
+## Streaming client — the consumer side of the same contract
+
+The client-side twin of the server split above. A service **consuming**
+another service's versioned stream contract is in the consumer role: the
+generated wire types are an external wire format like any other, translated in
+the stream-client adapter (`grpc/translation.go` beside `grpc/client.go`) —
+exactly mirroring the producer's server-side translation (R-25, R-26; see
+"Contracts on the consumer side" in placement-rules).
+
+```text
+internal/
+  grpc/
+    client.go                  # transport: dial, stream open, reconnect/backoff
+    translation.go             # wire <-> domain mapping (the consumer-side ACL)
+  domain/
+    stream_event.go            # sealed domain event sum the translation emits
+  ports/
+    coordination_port.go       # port speaks the domain sum, never a *pb type
+```
+
+The translation emits a **sealed domain event sum** — a closed set of domain
+variants, one per frame kind the consumer understands:
+
+```go
+// internal/domain/stream_event.go
+type StreamEvent interface{ isStreamEvent() }
+
+type TaskAssigned struct{ Assignment Assignment }
+type CreditGranted struct{ Credits int }
+type StreamClosed struct{ Reason CloseReason }
+
+func (TaskAssigned) isStreamEvent()  {}
+func (CreditGranted) isStreamEvent() {}
+func (StreamClosed) isStreamEvent()  {}
+```
+
+Before — the port speaks the wire type, so every consumer of the port must
+import the generated contract (`inner-imports-contracts` fires, R-25):
+
+```go
+// internal/ports/coordination_port.go
+import (
+    // FORBIDDEN (R-25): wire type in a port signature.
+    coordinationv1 ".../internal/contracts/coordination/v1"
+)
+
+type CoordinationStream interface {
+    Recv(ctx context.Context) (*coordinationv1.Event, error) // wire leaks inward
+}
+```
+
+After — de-wired: the port speaks the sealed sum; the adapter's translation
+maps each wire frame to exactly one variant:
+
+```go
+// internal/ports/coordination_port.go  (inner — no contract import)
+type CoordinationStream interface {
+    Recv(ctx context.Context) (domain.StreamEvent, error)
+}
+
+// internal/grpc/translation.go  (adapter — the only place a wire enum is
+// switched on)
+func toStreamEvent(f *coordinationv1.Event) (domain.StreamEvent, error) { ... }
+```
+
+The interactor switches on the domain sum (`switch e := ev.(type)`), never on
+a wire enum. A wire frame kind with no domain variant fails in translation —
+at the edge, not in the core.
+
+## Shim interactor — the pass-through, and both resolutions
+
+A use-case interactor that only forwards arguments to a single port call — no
+validation, no derivation, no composition, no policy — is a **shim** ("Shim
+interactors: enrich or delete" in placement-rules). The workflow policy the
+layer exists to hold is usually sitting in the caller.
+
+Anti-pattern — the shim; the eligibility policy leaks into the handler:
+
+```go
+// internal/interactor/interactor_archive.go
+// SHIM: one port call, nothing decided here.
+func (i *ArchiveInteractor) Archive(ctx context.Context, id domain.OrderID) error {
+    return i.archiver.Archive(ctx, id)
+}
+
+// internal/api/orders_handler_v1.go  (adapter — deciding, which adapters must not)
+func (h *Handler) ArchiveOrder(w http.ResponseWriter, r *http.Request) {
+    order, _ := h.orders.Get(r.Context(), orderID(r))
+    if order.Status != domain.StatusSettled ||
+        time.Since(order.ClosedAt) < 30*24*time.Hour { // business policy in the adapter
+        http.Error(w, "not eligible", http.StatusConflict)
+        return
+    }
+    _ = h.archive.Archive(r.Context(), order.ID) // ...then the shim forwards it
+}
+```
+
+Resolution 1 — **enrich**: the policy moves into the interactor (the pure rule
+into `domain/`); the handler goes back to decode-call-encode:
+
+```go
+// internal/domain/order.go  (pure rule: settled + retention window)
+func (o Order) ArchiveEligible(now time.Time) error { ... }
+
+// internal/interactor/interactor_archive.go  (earns its layer)
+func (i *ArchiveInteractor) Archive(ctx context.Context, id domain.OrderID) error {
+    order, err := i.orders.Get(ctx, id) // composition: 2 port calls
+    if err != nil {
+        return err
+    }
+    if err := order.ArchiveEligible(i.clock.Now()); err != nil { // invariant check
+        return err
+    }
+    return i.archiver.Archive(ctx, id)
+}
+
+// internal/api/orders_handler_v1.go  (adapter: decode, call, encode — no policy)
+func (h *Handler) ArchiveOrder(w http.ResponseWriter, r *http.Request) {
+    err := h.archive.Archive(r.Context(), orderID(r))
+    writeStatus(w, err) // map err -> status code, nothing decided here
+}
+```
+
+Resolution 2 — **delete**: there is genuinely no policy anywhere between
+transport and capability (or the datastore procedure owns it — the
+enforcement-locus carve-out in placement-rules). Wire the caller to the port
+directly via the sanctioned adapter→port→adapter mediation seam (R-27
+erratum); do not keep the shim for the diagram:
+
+```go
+// cmd/main.go  (wiring: handler consumes ports.OrderArchiver directly)
+handler := api.NewHandler(archiver)
+
+// internal/api/orders_handler_v1.go
+func (h *Handler) ArchiveOrder(w http.ResponseWriter, r *http.Request) {
+    err := h.archiver.Archive(r.Context(), orderID(r)) // mediation seam
+    writeStatus(w, err)
+}
+```
+
+Delete is right when the operation truly is transport→capability with no
+business decision in between. The moment a decision appears — eligibility,
+derivation, ordering, a retry budget — switch to resolution 1: the policy
+goes into the interactor, never into the handler.
 
 ## Migration filenames
 

@@ -296,6 +296,10 @@ The application layer holds two file shapes, both flat in `interactor/` until th
 
 Pick one filename convention per service and apply it to both shapes consistently. A process manager's private helper state (a ledger, an emit sink, a drain gate) lives beside it as an unexported type — it is not a use case and gets no `interactor_` file of its own.
 
+> **Addendum (2026-07-04):** the one-convention sentence governs **role names** only (one role-naming style per service). The no-prefix rule for process managers is absolute — `scheduler.go`, never `interactor_scheduler.go` — and the resulting mix of prefixed use cases with unprefixed process managers in one flat `interactor/` **is** the convention, not an inconsistency to fix. Authoritative wording: "Two interactor shapes" in [`../references/placement-rules.md`](../references/placement-rules.md) (cheatsheet R-24).
+
+> **Addendum (2026-07-04, superseded):** ADR-34 supersedes this decision. `interactor/` now holds use cases only; process managers moved to the `coordinator/` inner layer. See ADR-34 (cheatsheet R-34).
+
 ## ADR-25: Generated wire contracts are adapter-only
 
 A **generated wire contract** — a versioned package `internal/contracts/**/v<N>` or any `*.pb.go` package — may be imported only by adapters (`api/`, `grpc/`, `ws/`, `sse/`, `consumer/`, `producer/`, `external_services/`, `data_repositories/`, `storage/`). It is forbidden in `domain/`, `ports/`, and `interactor/`. Ports speak domain types; translate wire↔domain at the adapter boundary (ADR-26).
@@ -319,6 +323,101 @@ A port is an interface (multi-method) **or** a `func` type for a single-method s
 - **Push/sink/trigger ports** — the interactor pushes through a sink that a *driving* (inbound) adapter implements (a stream server's per-connection task sink, an `Emit`, a dispatch trigger). A driving adapter implementing a port is allowed and expected for streaming; the dependency stays `adapter → ports`, never `interactor → adapter`.
 
 File layout: `<context>_port.go`, or group a small cohesive set as `<adapter>.go`; one convention per service. ("No ports for inbound adapters" in ADR-15's spirit applies to request/response handlers, not to push/sink seams.)
+
+## ADR-28: arch-checks is a gate — CI binding and ratchet baseline
+
+`scripts/arch-checks.sh` is a **gate, not a suggestion**. The architecture's payoff — data sources and adapters stay swappable technical detail behind ports, the core stays transport-agnostic — exists only while the dependency rules actually hold, so validation must run where shipping happens (CI), not only where authoring happens: detection without a gate lets detected violations ship, and each shipped violation erodes exactly that swappability.
+
+Binding:
+
+- Wire the script into CI (or the repo's task runner) so it runs on every change that touches Go files; also run it before ending any change that adds, moves, or renames files.
+- In `review` mode, always include the script's findings verbatim in the report — never summarized away.
+- A violation the script already detects that ships anyway is a **process failure to be raised**, not a pre-existing condition to be inherited: when starting work in a repo, run the script once and report standing violations before adding to them.
+
+Brownfield adoption uses a **ratchet baseline** (`--baseline FILE`): a checked-in copy of the script's `--json` report. Violations whose exact check+detail pair appears in the baseline are *standing* — still reported, under a separate heading — and only *new* violations fail the run. The baseline is burned down deliberately and never grows. Operational detail: [`../references/migration.md`](../references/migration.md).
+
+## ADR-29: Adapters decide nothing; business policy stays inside the core
+
+Adapters are technical edges. They may observe, extract, encode, decode, transport, and persist; they do not decide business truth or next action. If a rule answers "what is true about the business object" or "what should happen next" — status derivation, price/quantity policy, credit movement, retry disposition — it belongs in `domain/` when it is pure domain logic, or `interactor/` when it is workflow policy.
+
+The adapter/core boundary is the raw-signal boundary. Adapters return booleans, counts, raw strings, presence flags, wire frames, and storage rows; inner layers interpret them. When mechanics and interpretation are interleaved, split at the signal. Transport sequencing that must interleave with I/O may remain adapter-side only when each decision point delegates to an inner-layer method.
+
+Streaming adapters use the same rule. A per-connection session may hold and mutate a domain entity, such as a credit ledger, as instructed by the interactor. It may not decide when or why the entity moves. The adapter keeps ordering; the interactor keeps policy. A reconciler repairing adapter-owned registry state may decide over that registry, but durable transitions still go through an interactor. `scripts/arch-checks.sh` reports `streaming-file-loc` when one non-test file under `grpc/`, `ws/`, or `sse/` exceeds ~400 LOC, because that is the point where the edge usually starts mixing transport, translation, registry, and policy.
+
+Hexagonal-calibration note: no divergence from the reference architecture lens. Graça's Explicit Architecture places ports inside the business logic, adapters outside, and application/domain logic in the core; Netflix's production case study keeps business logic in interactors and persistence/transport details swappable behind adapters. This ADR applies those same dependency and responsibility boundaries to adapter-side extraction and streaming sequence points.
+
+## ADR-30: One enforcement locus per state machine
+
+Every state machine has exactly **one declared enforcement locus** — the place where an illegal transition actually fails. Two sanctioned loci; a state machine picks one, never both, never neither:
+
+- **Domain-enforced** — a domain type (`Transition`, `CanTransitionTo`) validates transitions and is invoked on every mutation path; the datastore stores, never judges.
+- **Datastore-enforced** — a datastore guard (stored procedure, conditional update, constraint) rejects illegal moves; domain code treats the store's verdict as authoritative.
+
+**Declaration:** the chosen locus is declared where the state machine is defined — a comment atop the transition table and a line in the owning service docs. If the locus is the datastore, say so explicitly; the in-service transition table is then a **conformance oracle**, not the enforcer.
+
+**Conformance oracle:** whichever locus is chosen, a test (or check) MUST exercise the declared transition table against the enforcing implementation — drive every legal and illegal move and assert agreement — so the declaration cannot rot into decoration. Naming convention: a conformance test is a `_test.go` file explicitly named `*_conformance_test.go`, living beside the transition table it exercises. A transition API (`Transition`, `CanTransitionTo`) with zero non-test call sites and no conformance test is forbidden.
+
+**Anti-pattern — decorative state machine:** a domain transition table nothing calls. It documents nothing reliably (it drifts), and it actively misleads: readers and agents assume illegal transitions are rejected at runtime. Wire it, test it against the real locus, or delete it. `scripts/arch-checks.sh` reports `decorative-state-machine` (report-only) when a `domain/` dir defines `Transition`/`CanTransitionTo` with no non-test call sites outside `domain/` (self-calls within any `domain/` dir do not count) and no `*_conformance_test.go` exercising it.
+
+Hexagonal-calibration note: Graça's Explicit Architecture and the Netflix case study both keep business rules in the core and treat persistence as a swappable detail behind ports — the domain-enforced locus is their default reading. This ADR **deliberately diverges** by sanctioning a datastore-enforced locus as first-class (common under SP-only data-access policies): when the store judges, the declaration + conformance oracle contain the divergence — the core still owns the statement of the rule, and a test binds statement to enforcement, preserving the articles' goal that the rule stays explicit and testable rather than buried, unstated, in a replaceable adapter.
+
+## ADR-31: Consumer-side contract hygiene and port quality
+
+**Consumer-side contract hygiene.** The adapter-only rule for generated wire contracts (ADR-25) binds **each service in each role**. A service *consuming* another service's versioned wire contract treats it exactly like any external wire format: the consumer owns a domain vocabulary for every frame it sends or receives and translates in its stream-client adapter (`grpc/translation.go` beside `grpc/client.go`) — exactly mirroring the producer's server-side translation (ADR-26). Tells that the consumer-side seam is missing: port signatures naming generated types; frame constructors in `interactor/`; a wire enum compared or switched on outside the adapter; a second outbound adapter importing another service's contract because port signatures force it through. `scripts/arch-checks.sh` reports `inner-imports-contracts` grouped per service with the guilty layer named (`ports`/`interactor`/`domain`), so asymmetric drift — a producer clean, its consumer colonized — is legible in the output.
+
+**Port quality.** "Speaks domain types" is necessary but not sufficient. Four rules refine ADR-27:
+
+- **(a) Capability shape** — ports are shaped by the *capability the interactor needs*, not by the adapter's surface. A port whose method set mirrors a repository's query/procedure inventory one-to-one, or whose doc comments name the persistence technology, is an adapter interface promoted inward — regroup by capability and describe behavior ("atomically claims the next unit of work"), not mechanism.
+- **(b) No serialization tags** — no serialization metadata in `ports/` or `domain/`: a struct with `db:`/`bson:`/wire tags is an adapter row/DTO — keep it in the adapter and map. `json:` tags are permitted only in adapter-local DTOs and `contracts/` packages. `scripts/arch-checks.sh` enforces the `db:`/`bson:` half (`tags-in-inner-layers`).
+- **(c) Mediation erratum** — "no port without an interactor consumer" applies to *outbound capability* ports only; the earlier claim that inbound adapters never need ports is wrong. Two other seams are sanctioned: push/sink/trigger ports implemented by a *driving* adapter (ADR-27), and **adapter→port→adapter mediation**, where an inbound handler invokes a capability implemented by another adapter with no business policy in between.
+- **(d) Consumer-owned interface** — a seam between two interactors is not a port. The consuming interactor declares the small (typically unexported) interface it needs, beside itself in `interactor/`; the providing interactor satisfies it. No shared fat interface.
+
+Hexagonal-calibration note: no divergence. Netflix's case study frames every external data source — "a SQL database," "REST API," even another service's API — as a swappable adapter behind a port, with entities holding no knowledge of transport or storage: that is precisely the consumer-role rule (consuming a peer's contract is just another data source to translate at the edge). Graça's Explicit Architecture states that "Ports are created to fit the Application Core needs and not simply mimic the tools APIs" — the capability-shape rule verbatim — and places ports inside the business logic with both driving and driven adapters translating at the boundary, which sanctions the driving-adapter-implements-a-port seam the erratum restates.
+
+## ADR-32: Service-boundary rules — scope extension
+
+The skill previously governed folder layout and file placement inside one service (ADR-02). This ADR **extends its scope** to cross-service boundary rules: what two services must agree on, and who owns each agreed thing. The authoritative rule text lives in one place, [`../references/service-boundaries.md`](../references/service-boundaries.md); SKILL.md carries only a routing row, one gotcha, and three anti-pattern entries (silent config mirror, peer-datastore reach-in, peer-enum modeling). Seven rules, summarized:
+
+1. **Durable-state privacy** — a service's datastores (tables, collections, buckets) are private; peers get its data through its API/contract, never by reaching into its collections/tables. A peer read is a declared, version-pinned contract implemented against a schema artifact — never re-declared table/collection string literals in the reader.
+2. **Agreed values are contract** — any value two services must both hold to behave correctly is contract, whatever file it lives in. Preference ladder: transmit-and-adopt → transmit-and-fail-on-mismatch → transmit-and-warn (a smell) → silent config mirroring with no runtime comparison (forbidden for correctness-bearing values). Agreed value sets prefer contract-tier constants/enums (ADR-21 ladder) over per-service mirrors.
+3. **One enforcement locus per cross-service machine; coupling table for the peer** — each state machine (and each rule two services could both enforce over a shared datastore) is owned and enforced by exactly one named service; the non-owner documents only a coupling table (own-state ↔ peer-state ↔ mediating messages). Inside the owner, the locus choice follows ADR-30.
+4. **Enum-mirror exhaustiveness tests** — re-modeling a closed wire enum as a domain type is correct layering only with a test round-tripping the mirror against the generated enum's name map (count + values), so a contract bump breaks the lagging mirror's build.
+5. **Dual-enforcement reconciliation** — when both sides track the same numeric invariant (credits, slots, quotas), name the authoritative side and design the disagreement path (reject verdict + compensating update) up front; two ledgers with no reconciliation protocol is an incident template.
+6. **Fault-locus taxonomies** — cross-boundary failure reasons classify by fault locus (work-intrinsic / infrastructure / peer-protocol), not by the executor's internal stage names; the taxonomy lives with the service owning the fault domain, and peers translate at their adapters (ADR-26).
+7. **One version authority** — exactly one service owns a contract's version lifecycle, mapped to something runtime-observable; a documented SemVer with no written mapping to a wire version is a defect.
+
+`scripts/arch-checks.sh` supports the reference with report-only `boundary-review` warnings (heuristics, never violations): cross-service duplicate datastore-identifier string constants, and identically-suffixed env-tag names under different service prefixes.
+
+Hexagonal-calibration note. The Netflix case study is the citable rationale for rule 1: its business logic "should not depend on where we get data from", and every data source — a database, a REST API, another service — sits behind a port as a swappable adapter (they swapped a JSON API for a GraphQL data source in hours precisely because of that seam). A peer's private datastore reached directly is a data source that can never be swapped — its schema and lifecycle belong to the peer — so **a peer's datastore is never your data source**; the peer's published contract is, consumed behind your own port with adapter-edge translation (ADR-25/26/31). Graça's Explicit Architecture decouples components through events and a deliberately small shared kernel — the calibration for rule 2's preference of shared contract-tier values over silent per-service mirrors — and permits a component to query another component's data only read-only, never modify it; at service granularity this ADR tightens that read-only allowance into a declared, version-pinned contract (rule 1). That tightening is a deliberate, recorded calibration choice, not a silent divergence.
+
+## ADR-33: Incremental adoption and migration order
+
+The skill previously assumed greenfield placement. This ADR adds an incremental-adoption path for existing codebases; the authoritative procedure lives in [`../references/migration.md`](../references/migration.md). Migration is **assess-first and read-only-first**: an assessment report and an ordered plan come before any move, and the `migrate` input performs no automatic file moves — execution is separate, individually revertible, reviewed changes. Six ordering principles:
+
+1. **Assess before moving** — run `arch-checks.sh` on the untouched repo; the standing-violation report is the baseline ledger (the ADR-28 ratchet needs no separate bookkeeping). Classify every finding by root-cause class (misplacement / missing seam / boundary leak / naming drift) and by disposition (mechanical drift → safe move; settled trade-off → ADR before any move, else the move re-litigates a settled decision; ambiguous guidance → Step 0) before touching anything.
+2. **Empirical contexts** — bounded contexts come from PR co-change clusters and shared vocabulary, not legacy folder names; the context map is recorded before the first move, and every move cites a row in it.
+3. **Strangler order, outside-in** — composition root (`cmd/`) first, translation seams next (one port de-wired per change), policy extraction third (one rule per change, characterization test written before the move), folder renames and promotions **last**. Rationale: renames are the cheapest and least risky step, so they go last despite being the most visible — semantics first, spelling last; a rename before the seams and policy are in place only decorates the leak.
+4. **Anti-corruption layers go in during (not after) migration** — when an inner layer consumes a wire type, introduce the domain type + adapter-edge mapping while both shapes flow, migrate call sites, then delete the wire path; never a big-bang signature flip.
+5. **State machines: locus first** — the current enforcement locus is declared and conformance-tested (ADR-30) *before* any transition logic is relocated; the conformance test is the safety net for the move.
+6. **Compatibility, rollback, and topology isolation** — every step keeps the build green and behavior identical, checkpointed by arch-checks + the full test suite, and is revertible alone; anything touching a published contract or peer-visible identifier escalates out of migration into the contract-change process (ADR-32); module-topology changes (single-module ↔ workspace, ADR-22) are their own migration class, never combined with layer moves in one change.
+
+Hexagonal-calibration note: no divergence. The strangler order works inward along the dependency rule — edges (composition, adapters, translation) before core (policy) — and the payoff Netflix reports for its hexagonal seams (swapping a data source in hours) is exactly what step 3(b)'s translation-seams-first ordering buys during a migration; Graça's boundary translation at both driving and driven adapters is what §4 installs while old and new shapes coexist.
+
+## ADR-34: `coordinator/` layer — `interactor/` holds use cases only
+
+Supersedes ADR-24 (two shapes in one folder).
+
+`interactor/` is strictly the **use-case layer** in the Clean Architecture sense: an interactor is a use case — the application-specific business rules. A use case describes one business process, orchestrates entities (`domain/`) and dependency-injected `ports/` to fulfil it, encapsulates the business rules that process needs (leaning on entities to enforce invariants), and has a single responsibility. File: `interactor_<context>.go`, one workflow step, ~1–3 port calls, no spawned goroutines.
+
+Long-running or concurrent **process managers** — a loop, goroutines, mutexes, channels, timers, or retries coordinating several ports over time — move to their own inner layer: **`coordinator/`**. Files are role-named with no layer prefix (`coordinator/scheduler.go`, `pipeline.go`, `reconnector.go`; never `coordinator_scheduler.go` or `interactor_scheduler.go`); one role-naming style per service. A coordinator is application core, not an adapter: it owns no transport, touches the world only through `ports/`, and may invoke `interactor/` use cases at its sequence points. Its private helper state (a ledger, an emit sink, a drain gate) lives beside it as an unexported type.
+
+Dependency direction: `cmd/` and inbound adapters → `coordinator` → `interactor` → `domain`/`ports`; `interactor/` (and `domain/`/`ports/`) never import `coordinator/`. `coordinator/` obeys every inner-layer import invariant — no adapter imports, no generated wire contracts — enforced by `scripts/arch-checks.sh` (`layer-imports-adapter`, `inner-imports-contracts`). Both layers stay flat until the ≥10-file promotion (ADR-05).
+
+Rationale: "interactor" is Clean Architecture's name for the use-case object; housing process managers under the same roof diluted that meaning and made the layer read as ambiguous. An explicit `coordinator/` layer keeps both concerns first-class and separately promotable without pushing coordination out to adapters (which decide nothing, ADR-29).
+
+Migration: mechanical move (`interactor/<role>.go` → `coordinator/<role>.go`), imports updated in the same change; ordered per [`../references/migration.md`](../references/migration.md) (renames last).
+
+Hexagonal-calibration note: no divergence. Both the use case and the coordinator sit inside Graça's application core (application services / orchestration), outside the domain, inside the ports boundary; Netflix's transport-agnostic interactors map to the use-case layer, and the split changes packaging, not dependency direction.
 
 ---
 
