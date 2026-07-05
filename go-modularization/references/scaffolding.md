@@ -17,7 +17,7 @@ Two shapes. Same internal service skeleton.
     internal/
       <inbound_adapter>/         # api, consumer, cli
       <outbound_adapter>/        # data_repositories, external_services, producer, storage
-      <layer>/                   # domain, interactor, ports
+      <layer>/                   # domain, interactor, coordinator, ports
       contracts/                 # optional: service-scoped contracts (this service only)
       config/
     scripts/                     # optional, per-service
@@ -93,7 +93,8 @@ single-service repo there is no cross-service tier, so the lone
 
 Create only `cmd/`, `internal/domain/`, `internal/interactor/`,
 `internal/ports/`, `internal/config/`, plus the adapters the user named.
-Other adapter folders are created on first need — never empty.
+`internal/coordinator/` is created on the first process manager (R-34), other
+adapter folders on first need — never empty.
 
 ## Config
 

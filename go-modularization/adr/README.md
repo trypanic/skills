@@ -298,6 +298,8 @@ Pick one filename convention per service and apply it to both shapes consistentl
 
 > **Addendum (2026-07-04):** the one-convention sentence governs **role names** only (one role-naming style per service). The no-prefix rule for process managers is absolute — `scheduler.go`, never `interactor_scheduler.go` — and the resulting mix of prefixed use cases with unprefixed process managers in one flat `interactor/` **is** the convention, not an inconsistency to fix. Authoritative wording: "Two interactor shapes" in [`../references/placement-rules.md`](../references/placement-rules.md) (cheatsheet R-24).
 
+> **Addendum (2026-07-04, superseded):** ADR-34 supersedes this decision. `interactor/` now holds use cases only; process managers moved to the `coordinator/` inner layer. See ADR-34 (cheatsheet R-34).
+
 ## ADR-25: Generated wire contracts are adapter-only
 
 A **generated wire contract** — a versioned package `internal/contracts/**/v<N>` or any `*.pb.go` package — may be imported only by adapters (`api/`, `grpc/`, `ws/`, `sse/`, `consumer/`, `producer/`, `external_services/`, `data_repositories/`, `storage/`). It is forbidden in `domain/`, `ports/`, and `interactor/`. Ports speak domain types; translate wire↔domain at the adapter boundary (ADR-26).
@@ -397,9 +399,25 @@ The skill previously assumed greenfield placement. This ADR adds an incremental-
 3. **Strangler order, outside-in** — composition root (`cmd/`) first, translation seams next (one port de-wired per change), policy extraction third (one rule per change, characterization test written before the move), folder renames and promotions **last**. Rationale: renames are the cheapest and least risky step, so they go last despite being the most visible — semantics first, spelling last; a rename before the seams and policy are in place only decorates the leak.
 4. **Anti-corruption layers go in during (not after) migration** — when an inner layer consumes a wire type, introduce the domain type + adapter-edge mapping while both shapes flow, migrate call sites, then delete the wire path; never a big-bang signature flip.
 5. **State machines: locus first** — the current enforcement locus is declared and conformance-tested (ADR-30) *before* any transition logic is relocated; the conformance test is the safety net for the move.
-6. **Compatibility, rollback, and topology isolation** — every step keeps the build green and behavior identical, checkpointed by arch-checks + the full test suite, and is revertible alone; anything touching a published contract or peer-visible identifier escalates out of migration into the contract-change process (ADR-32); module-topology changes (single-module ↔ workspace, ADR-24) are their own migration class, never combined with layer moves in one change.
+6. **Compatibility, rollback, and topology isolation** — every step keeps the build green and behavior identical, checkpointed by arch-checks + the full test suite, and is revertible alone; anything touching a published contract or peer-visible identifier escalates out of migration into the contract-change process (ADR-32); module-topology changes (single-module ↔ workspace, ADR-22) are their own migration class, never combined with layer moves in one change.
 
 Hexagonal-calibration note: no divergence. The strangler order works inward along the dependency rule — edges (composition, adapters, translation) before core (policy) — and the payoff Netflix reports for its hexagonal seams (swapping a data source in hours) is exactly what step 3(b)'s translation-seams-first ordering buys during a migration; Graça's boundary translation at both driving and driven adapters is what §4 installs while old and new shapes coexist.
+
+## ADR-34: `coordinator/` layer — `interactor/` holds use cases only
+
+Supersedes ADR-24 (two shapes in one folder).
+
+`interactor/` is strictly the **use-case layer** in the Clean Architecture sense: an interactor is a use case — the application-specific business rules. A use case describes one business process, orchestrates entities (`domain/`) and dependency-injected `ports/` to fulfil it, encapsulates the business rules that process needs (leaning on entities to enforce invariants), and has a single responsibility. File: `interactor_<context>.go`, one workflow step, ~1–3 port calls, no spawned goroutines.
+
+Long-running or concurrent **process managers** — a loop, goroutines, mutexes, channels, timers, or retries coordinating several ports over time — move to their own inner layer: **`coordinator/`**. Files are role-named with no layer prefix (`coordinator/scheduler.go`, `pipeline.go`, `reconnector.go`; never `coordinator_scheduler.go` or `interactor_scheduler.go`); one role-naming style per service. A coordinator is application core, not an adapter: it owns no transport, touches the world only through `ports/`, and may invoke `interactor/` use cases at its sequence points. Its private helper state (a ledger, an emit sink, a drain gate) lives beside it as an unexported type.
+
+Dependency direction: `cmd/` and inbound adapters → `coordinator` → `interactor` → `domain`/`ports`; `interactor/` (and `domain/`/`ports/`) never import `coordinator/`. `coordinator/` obeys every inner-layer import invariant — no adapter imports, no generated wire contracts — enforced by `scripts/arch-checks.sh` (`layer-imports-adapter`, `inner-imports-contracts`). Both layers stay flat until the ≥10-file promotion (ADR-05).
+
+Rationale: "interactor" is Clean Architecture's name for the use-case object; housing process managers under the same roof diluted that meaning and made the layer read as ambiguous. An explicit `coordinator/` layer keeps both concerns first-class and separately promotable without pushing coordination out to adapters (which decide nothing, ADR-29).
+
+Migration: mechanical move (`interactor/<role>.go` → `coordinator/<role>.go`), imports updated in the same change; ordered per [`../references/migration.md`](../references/migration.md) (renames last).
+
+Hexagonal-calibration note: no divergence. Both the use case and the coordinator sit inside Graça's application core (application services / orchestration), outside the domain, inside the ports boundary; Netflix's transport-agnostic interactors map to the use-case layer, and the split changes packaging, not dependency direction.
 
 ---
 

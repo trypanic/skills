@@ -249,13 +249,14 @@ satisfy `ports.TaskSink` — expected for a streaming server (R-27), not a
 violation. The dependency stays `grpc → ports`, never `interactor → grpc`. A
 stream **client** to one upstream is outbound: `grpc/client.go`.
 
-Process-manager interactor (R-24) — role-named, no `interactor_` prefix, beside
-the thin use cases:
+Coordinator layer (R-34) — process managers, role-named, in their own inner
+layer beside the use-case interactors:
 
 ```text
 internal/
   interactor/
     interactor_session.go      # use case (admission gate, one workflow step)
+  coordinator/
     scheduler.go               # process manager: credit-bounded dispatch loop
     reconnector.go             # process manager: session-lifetime reconnect loop
     pipeline.go                # process manager: multi-layer scrape pipeline
@@ -265,7 +266,7 @@ Proto-leak counter-example (R-25) — the generated contract must NOT cross the
 adapter boundary:
 
 ```go
-// internal/interactor/pipeline.go
+// internal/coordinator/pipeline.go
 import (
     // FORBIDDEN (R-25): generated wire contract in an inner layer.
     // arch-checks.sh flags: inner-imports-contracts.
@@ -275,13 +276,13 @@ import (
 func (p *Pipeline) Run(ctx context.Context, t *coordinationv1.AssignTask) error // leaks the wire type inward
 ```
 
-Fix — map at the adapter edge; the interactor speaks domain types:
+Fix — map at the adapter edge; the inner layer speaks domain types:
 
 ```go
 // internal/grpc/translation.go  (adapter)
 func toAssignment(a *coordinationv1.AssignTask) domain.Assignment { ... }
 
-// internal/interactor/pipeline.go  (inner — no proto import)
+// internal/coordinator/pipeline.go  (inner — no proto import)
 func (p *Pipeline) Run(ctx context.Context, a domain.Assignment) error
 ```
 

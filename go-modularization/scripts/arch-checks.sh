@@ -37,7 +37,7 @@ registered under `use`; orphan multi-module flagged); nine import invariants
 (layer->adapter, inner->generated-contracts, cross-service internal,
 kernel<->contracts, contracts->business, go-pkgs->internal, adapter->adapter,
 imports-cmd) — inner-imports-contracts details are grouped per service and
-name the guilty layer (service <svc> layer <ports|interactor|domain>: edge);
+name the guilty layer (service <svc> layer <ports|interactor|coordinator|domain>: edge);
 one cmd/main.go per service (services with no non-test .go
 files — non-Go services — are skipped); no Go under scripts/; serialization
 struct tags (db:"/bson:") in non-test .go files under ports/ or domain/
@@ -227,7 +227,7 @@ if [ "$run_go" -eq 1 ]; then
     esac
   done < <(printf '%s\n' "$dump" | awk -F'\t' -v root="$root" '
     function svc(p,   s){ if (!match(p, /(^|\/)services\//)) return ""; s = substr(p, RSTART+RLENGTH); sub(/\/.*/, "", s); return s }
-    function layer(p){ if (p ~ "/domain(/|$)") return "domain"; if (p ~ "/interactor(/|$)") return "interactor"; if (p ~ "/ports(/|$)") return "ports"; return "inner" }
+    function layer(p){ if (p ~ "/domain(/|$)") return "domain"; if (p ~ "/interactor(/|$)") return "interactor"; if (p ~ "/coordinator(/|$)") return "coordinator"; if (p ~ "/ports(/|$)") return "ports"; return "inner" }
     function adapter(p,   a){ if(p !~ "/(api|consumer|cli|grpc|ws|sse|graphql|data_repositories|external_services|producer|storage)(/|$)") return ""; a=p; sub(".*/(internal/)?","",a); sub("/.*","",a); return a }   # known limitation: last-segment extraction treats promoted provider subfolders as the adapter identity
     {
       ip=$1; rel=$2; sub("^"root"/","",rel); sub("^"root"$","",rel)
@@ -236,7 +236,7 @@ if [ "$run_go" -eq 1 ]; then
     END {
       for(k=1;k<=cnt;k++){
         ip=order[k]; ipr=relOf[ip]; ips=svc(ipr); ipa=adapter(ipr)
-        inner = (ipr ~ "/(domain|interactor|ports)(/|$)")
+        inner = (ipr ~ "/(domain|interactor|coordinator|ports)(/|$)")
         n=split(impsOf[ip], imps, " ")
         for(i=1;i<=n;i++){
           im=imps[i]; if(!(im in relOf)) continue   # only in-repo packages are keys
@@ -246,7 +246,7 @@ if [ "$run_go" -eq 1 ]; then
           if (ips!="" && ims!="" && ips!=ims && imr ~ "/internal(/|$)") print "cross-service-internal\t"ipr" -> "imr
           if (ipr ~ "(^|/)internal/kernel(/|$)" && imr ~ "(^|/)internal/contracts(/|$)") print "kernel-imports-contracts\t"ipr" -> "imr
           if (ipr ~ "(^|/)internal/contracts(/|$)" && imr ~ "(^|/)internal/kernel(/|$)") print "contracts-imports-kernel\t"ipr" -> "imr
-          if (ipr ~ "(^|/)internal/contracts(/|$)" && imr ~ "/(domain|interactor|ports|api|consumer|cli|data_repositories|external_services|producer|storage)(/|$)") print "contracts-imports-business\t"ipr" -> "imr
+          if (ipr ~ "(^|/)internal/contracts(/|$)" && imr ~ "/(domain|interactor|coordinator|ports|api|consumer|cli|data_repositories|external_services|producer|storage)(/|$)") print "contracts-imports-business\t"ipr" -> "imr
           if (ipr ~ "(^|/)go-pkgs/" && imr ~ "(^|/)(internal|services)(/|$)") print "go-pkgs-imports-internal\t"ipr" -> "imr
           if (ipa!="" && ima!="" && ips==ims && ipa!=ima) print "adapter-imports-adapter\t"ipr" -> "imr
           if (imr ~ "(^|/)cmd(/|$)") print "imports-cmd\t"ipr" -> "imr

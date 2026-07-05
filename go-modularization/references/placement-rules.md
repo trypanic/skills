@@ -49,41 +49,51 @@ correct — do not align. Promoted package name = context (`package order`);
 importers alias by layer when two layers expose the same context package
 (`orderintr`, `orderrepo`).
 
-## Two interactor shapes (same layer, same folder)
+## Use cases and coordinators (two inner layers)
 
-`interactor/` holds two shapes. Both stay flat in `interactor/` until the
-≥10-file promotion threshold; neither gets its own sub-layer.
+`interactor/` holds **use cases only** — Clean Architecture interactors: the
+application-specific business rules. A use case describes one business
+process, orchestrates entities (`domain/`) and dependency-injected `ports/`
+to fulfil it, and owns the decisions that process requires — one workflow
+step, ~1–3 port calls, no spawned goroutines.
+File: `interactor_<context>.go`.
 
-- **Use-case interactor** — one workflow step, ~1–3 port calls, no spawned
-  goroutines. File: `interactor_<context>.go`.
-- **Process manager / coordinator** — long-running or concurrent: owns a loop,
-  goroutines, mutexes, channels, timers, or retries, and coordinates several
-  ports over time (scraping pipelines, schedulers, reconnect loops, a
-  consumer's inner engine). File: `<role>.go` — `pipeline.go`, `processor.go`,
-  `scheduler.go`, `reconnector.go` — **role-named, no `interactor_` prefix**,
-  because it is named for what it runs, not a CRUD context.
+Long-running or concurrent coordination lives in its own inner layer,
+**`coordinator/`** — process managers: a loop, goroutines, mutexes, channels,
+timers, or retries coordinating several ports (and use cases) over time
+(scraping pipelines, schedulers, reconnect loops, a consumer's inner engine).
+File: `<role>.go` — `pipeline.go`, `processor.go`, `scheduler.go`,
+`reconnector.go` — **role-named, no layer prefix** (`scheduler.go`, never
+`coordinator_scheduler.go` or `interactor_scheduler.go`), because it is named
+for what it runs, not a CRUD context. Settle on one role-naming style per
+service (do not call the same shape `pipeline.go` in one place and
+`scrape_loop.go` in another).
 
 ```text
 interactor/
   interactor_order.go      # use case
   interactor_payment.go    # use case
+coordinator/
   scheduler.go             # process manager (a loop over seats/ports)
   reconnector.go           # process manager (session-lifetime loop)
 ```
 
-The "pick one convention per service" sentence governs the choice of **role
-names** only — settle on one role-naming style and stick to it (do not call the
-same shape `pipeline.go` in one place and `scrape_loop.go` in another). The
-no-prefix rule for process managers is **absolute**: `scheduler.go`, never
-`interactor_scheduler.go` — in every service, with no per-service opt-out.
-Carve-out: a service always mixes prefixed use-case files
-(`interactor_order.go`) with unprefixed role-named process managers
-(`scheduler.go`) in one flat `interactor/` folder — that mix **is** the
-convention, not an inconsistency to fix.
+Dependency direction: `cmd/` and inbound adapters start/call coordinators;
+`coordinator/` may call `interactor/` use cases at its sequence points and
+use `ports/`/`domain/` directly; `interactor/` never imports `coordinator/`.
+`coordinator/` is application core, not an adapter: it owns no transport and
+obeys the same import invariants as `interactor/` — no adapter imports, no
+generated wire contracts (enforced by `arch-checks.sh`).
 
-A process manager's private helper state (a ledger, an emit sink, a drain gate)
-lives beside it in `interactor/` as an unexported type; it is not a use case and
-gets no `interactor_` file of its own.
+A coordinator's private helper state (a ledger, an emit sink, a drain gate)
+lives beside it in `coordinator/` as an unexported type; it is not a use case
+and gets no file in `interactor/`.
+
+Both layers stay flat until the ≥10-file promotion threshold (counting rule,
+SKILL.md). Migrating a service that kept process managers in `interactor/` is
+a mechanical move (`interactor/scheduler.go` → `coordinator/scheduler.go`,
+imports updated in the same change) — ordered per `migration.md`.
+(ADR-34; supersedes ADR-24's two-shapes-one-folder rule.)
 
 ### Shim interactors: enrich or delete
 
@@ -175,8 +185,9 @@ An adapter may **observe, extract, encode, decode, transport, and persist**; it
 may not **decide**. Operational test: if a rule answers "what is true about the
 business object" or "what should happen next" (a status derivation, a
 price/quantity policy, a credit movement, a retry disposition), it belongs in
-`domain/` (pure rules) or `interactor/` (workflow policy) — even when its inputs
-come from adapter-side mechanics.
+`domain/` (pure rules), `interactor/` (use-case policy), or `coordinator/`
+(long-running coordination policy) — even when its inputs come from
+adapter-side mechanics.
 
 The adapter returns raw signals: booleans, counts, raw strings, presence flags,
 wire frames, storage rows. An inner layer interprets them. When mechanics and
