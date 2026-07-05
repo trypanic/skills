@@ -15,17 +15,17 @@ Out of scope: observability conventions (logging, metrics, tracing), Go file-spl
 
 This file holds the routing flowcharts and the invariants that apply to **every** invocation (dependency rules, forbidden names, thresholds, Step 0). Task detail lives in `references/`. **Read the matching file BEFORE acting — the summaries in this file are for routing, not for executing:**
 
-| Your task                                                    | Read first                                                       |
-| ------------------------------------------------------------ | ---------------------------------------------------------------- |
-| Scaffold a service or repo; place config or scripts          | [`references/scaffolding.md`](references/scaffolding.md)         |
-| Place, name, or promote source files; add/extend an adapter  | [`references/placement-rules.md`](references/placement-rules.md) |
-| Create or rename a migration                                 | [`references/migrations.md`](references/migrations.md)           |
-| Add shared code (`go-pkgs/`, `internal/kernel` or `contracts/`, SDK repos) | [`references/shared-code.md`](references/shared-code.md) |
-| Need a worked example, full service tree, or counter-example | [`references/layout-examples.md`](references/layout-examples.md) |
-| Verify after scaffolding or restructuring                    | run [`scripts/arch-checks.sh`](scripts/arch-checks.sh)           |
-| Explain why a rule exists                                    | [`references/adr-cheatsheet.md`](references/adr-cheatsheet.md)   |
+| Your task                                                                                   | Read first                                                             |
+| ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Scaffold a service or repo; place config or scripts                                         | [`references/scaffolding.md`](references/scaffolding.md)               |
+| Place, name, or promote source files; add/extend an adapter                                 | [`references/placement-rules.md`](references/placement-rules.md)       |
+| Create or rename a migration                                                                | [`references/migrations.md`](references/migrations.md)                 |
+| Add shared code (`go-pkgs/`, `internal/kernel` or `contracts/`, SDK repos)                  | [`references/shared-code.md`](references/shared-code.md)               |
+| Need a worked example, full service tree, or counter-example                                | [`references/layout-examples.md`](references/layout-examples.md)       |
+| Verify after scaffolding or restructuring                                                   | run [`scripts/arch-checks.sh`](scripts/arch-checks.sh)                 |
+| Explain why a rule exists                                                                   | [`references/adr-cheatsheet.md`](references/adr-cheatsheet.md)         |
 | Service-boundary questions — peer datastores, shared values/enums/config, contract versions | [`references/service-boundaries.md`](references/service-boundaries.md) |
-| Adopting the convention in an existing codebase / migrating a legacy layout | [`references/migration.md`](references/migration.md) |
+| Adopting the convention in an existing codebase / migrating a legacy layout                 | [`references/migration.md`](references/migration.md)                   |
 
 Exception — no extra read needed when the flowchart below already gives the full canonical path for a single new file and no promotion threshold is near. For anything touching 2+ files, a rename, a promotion, or a new folder: read the task file first.
 
