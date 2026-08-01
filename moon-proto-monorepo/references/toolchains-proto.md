@@ -64,6 +64,48 @@ per-tool env is `[tools.<tool>.env]`.
 **R2.6 — `[env]` keys must be real, consumed vars.** No invented switches (an env
 var that no documented tool and no repo code reads). [F12]
 
+### Env-scoped overlays — `.prototools.<env>` + `PROTO_ENV`
+
+`PROTO_ENV=<env>` makes proto additionally load `.prototools.<env>`, merged
+**over** the base `.prototools` per setting. This is the canonical way to run
+tasks against another environment tier (`PROTO_ENV=dev moon run <svc>:db-migrate`):
+a committed, secret-free overlay re-points `[env].file` at that tier's dotenv.
+The base config is the default tier when `PROTO_ENV` is unset.
+[src: https://moonrepo.dev/docs/proto/config]
+
+```toml
+# .prototools.dev — committed; loaded only when PROTO_ENV=dev
+[env]
+file = ".env.shared.dev"    # the tier's dotenv (itself gitignored if it holds secrets)
+ENVIRONMENT = "dev"         # re-declare EVERY per-tier explicit key (R2.7)
+```
+
+**R2.7 — an explicit `[env]` key whose value varies per tier is re-declared in
+every overlay.** Explicit `[env]` keys beat dotenv-loaded values across *both*
+config files: with base `ENVIRONMENT = "local"` and no re-declaration,
+`PROTO_ENV=dev` yields the dev dotenv's values but `ENVIRONMENT=local` — a mixed
+state. A scoped explicit key beats the base explicit key, so re-declaring in the
+overlay resolves it. Keep the key in the base too when scripts/tools consume it
+on the default tier — never delete it to dodge the conflict.
+
+Probed merge semantics (proto 0.5x) — three traps:
+
+1. **The overlay's `file` does not replace the base `file` — BOTH dotenvs
+   load** (overlay wins per var). A var missing from the tier dotenv silently
+   inherits the *base* dotenv's value. Keep tier dotenvs key-for-key equal
+   with the base, and audit that parity.
+2. **Explicit keys > dotenv values**, regardless of which config file declared
+   them — hence R2.7.
+3. **A missing overlay file or missing dotenv target is silent** (exit 0, no
+   warning): an unset — or typo'd — `PROTO_ENV` simply runs the base tier.
+   Note the asymmetry under R2.7: if the overlay loads but its dotenv is
+   missing, the overlay's explicit keys still apply over the base dotenv's
+   values (e.g. `ENVIRONMENT=prod` with local DSNs) — where that matters,
+   audit that each overlay's dotenv target exists.
+
+Pass `PROTO_ENV` **inline per command**, never `export` it — a sticky export
+silently re-aims every subsequent task (tests, migrations, seeds) at that tier.
+
 ### `[settings]` [src: https://moonrepo.dev/docs/proto/config]
 
 ```toml
@@ -157,8 +199,8 @@ A project sets `toolchains.default: <id>` but `<id>` has no block in
   binaries instead of downloading.
 - Documented `PROTO_*`: `PROTO_HOME`, `PROTO_AUTO_INSTALL`, `PROTO_AUTO_CLEAN`,
   `PROTO_<TOOL>_VERSION`, `PROTO_OFFLINE`, `PROTO_OFFLINE_TIMEOUT`, `PROTO_ENV`
-  (selects `.prototools.<env>` overlays), `PROTO_LOG`, `PROTO_VERSION`,
-  `PROTO_BYPASS_VERSION_CHECK`.
+  (selects `.prototools.<env>` overlays — see the env-scoped overlays section
+  and R2.7 above), `PROTO_LOG`, `PROTO_VERSION`, `PROTO_BYPASS_VERSION_CHECK`.
 - There is **no `ENABLE_MOON`** and **no `MOON_OFFLINE`** env var. Don't invent them.
 
 ## Bootstrap task
@@ -181,3 +223,7 @@ tasks:
 - `toolchains.default` pointing at a toolchain with no block here (then it isn't
   really enabled).
 - An invented `[env]` key (F12).
+- A `.prototools.<env>` overlay re-pointing `file` without re-declaring the
+  per-tier explicit keys (R2.7) — the base explicit value silently wins.
+- `export PROTO_ENV=…` in a profile/script instead of an inline per-command
+  prefix.

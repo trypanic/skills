@@ -147,6 +147,13 @@ Concrete corrections to reasonable-but-wrong assumptions. Read before acting:
 - **Caching needs declared `outputs` to hydrate.** `cache: true` on a task that declares no `outputs` saves nothing. And `cache: true` on a non-deterministic task (start/serve/migrate) poisons the cache.
 - **`command` has no shell.** Pipes, `&&`, `;`, and redirects require `script`. A `command` value containing them silently breaks.
 - **There is no `MOON_OFFLINE`** — offline is `PROTO_OFFLINE` (proto-level).
+- **`.prototools.<env>` overlays (`PROTO_ENV`) merge per-setting, and BOTH
+  dotenvs load.** The overlay's `[env].file` does not replace the base file — a
+  var missing from the tier dotenv silently inherits the base value. Explicit
+  `[env]` keys beat dotenv values from either file, so every per-tier explicit
+  key (e.g. an `ENVIRONMENT` selector consumed by scripts) is re-declared in
+  each overlay — kept in the base, never deleted. A missing overlay or dotenv
+  target is silent: an unset or typo'd `PROTO_ENV` runs the base tier.
 - **`moon migrate` was removed in v2.** Don't suggest it.
 - **Version-gated:** features like the task-tag target `project:#tag` and the MQL `taskTag` field require **moon ≥ 2.3.0**. Check the `moon` pin in `.prototools` before recommending them.
 - **proto is pre-1.0**: `[settings]` are nested + kebab-case (`[settings.http]`, `[settings.offline]`, `[settings.build]`). There is no flat `unstable` or `offline` key.
@@ -173,6 +180,10 @@ Add a NEW PROJECT                      → mkdir + moon.yml (language + valid to
                                          ensure a projects glob/source covers it.
 Make a task CACHEABLE                   → declare inputs + outputs, set cache: true.
 A task needs ENV                        → envFile / shared dotenv; never inline secrets.
+Run tasks against another env TIER      → committed .prototools.<env> overlay
+                                         + inline PROTO_ENV=<env> (see
+                                         toolchains-proto.md R2.7);
+                                         never per-script --env flags.
 A task needs workspace-root paths       → runFromWorkspaceRoot: true.
 ```
 
@@ -215,7 +226,7 @@ When generating or reviewing config, reject these. Cite the rule, offer the cano
 
 ## Verify
 
-After editing config, run [`scripts/moon-checks.sh`](scripts/moon-checks.sh) from the repo root (`bash scripts/moon-checks.sh`; `--json` for machine output, `--help` for usage). It validates any moon repo against the rules above: dead globs, undiscovered projects, invalid/`unknown` `toolchains.default`, toolchain referenced but not enabled, v1 keys, out-of-set enum values, `$schema` inconsistency, malformed maintainers, metadata gaps, inline secrets, cache-on-nondeterministic, cache-without-outputs, un-pinned tool in a task, malformed/branch plugin locators, a tasks file missing `inheritedBy`, and undocumented `[env]` keys. The `proto`-vs-installed check is advisory and SKIPs with a NOTE when `proto`/network is unavailable. Structured report on stdout, diagnostics on stderr; **exit 0 = clean, 1 = violations, 2 = bad usage, 3 = missing prerequisite.** If the script is unavailable, the per-check logic is inside it — run the equivalents manually.
+After editing config, run [`scripts/moon-checks.sh`](scripts/moon-checks.sh) from the repo root (`bash scripts/moon-checks.sh`; `--json` for machine output, `--help` for usage). It validates any moon repo against the rules above: dead globs, undiscovered projects, invalid/`unknown` `toolchains.default`, toolchain referenced but not enabled, v1 keys, out-of-set enum values, `$schema` inconsistency, malformed maintainers, metadata gaps, inline secrets, cache-on-nondeterministic, cache-without-outputs, un-pinned tool in a task, malformed/branch plugin locators, a tasks file missing `inheritedBy`, and undocumented `[env]` keys (the locator/env checks also sweep `.prototools.<env>` overlays, with an advisory NOTE when an overlay re-points `[env].file` without re-declaring a base explicit key — R2.7). The `proto`-vs-installed check is advisory and SKIPs with a NOTE when `proto`/network is unavailable. Structured report on stdout, diagnostics on stderr; **exit 0 = clean, 1 = violations, 2 = bad usage, 3 = missing prerequisite.** If the script is unavailable, the per-check logic is inside it — run the equivalents manually.
 
 Then report using this template (omit empty sections):
 

@@ -36,6 +36,10 @@ Checks (each maps to a SKILL.md rule id):
   plugin-locator (F11/R2.4/2.5)       a [plugins.*] locator with // or a /main/ branch ref
   bogus-env (F12/R2.6)                a known-nonexistent env var (ENABLE_MOON / MOON_OFFLINE)
 
+The locator and env checks sweep both .prototools and any .prototools.<env>
+overlay. An overlay re-pointing [env].file without re-declaring any base
+explicit [env] key emits an advisory NOTE on stderr (R2.7), not a violation.
+
 Output: structured report on stdout (text|json). Diagnostics on stderr. Detail
 lists capped at 100; exact counts in the summary.
 
@@ -252,25 +256,44 @@ if [ -d .moon/tasks ]; then
   done
 fi
 
-# --- 5. .prototools: plugin locators + bogus env ------------------------------
+# --- 5. .prototools (+ .prototools.<env> overlays): locators + env checks -----
+base_env_keys=""
 if [ -f .prototools ]; then
-  plines=$(awk '/^\[plugins/{inp=1;next} inp&&/^\[/{inp=0} inp&&/=/{print}' .prototools)
+  base_env_keys=$(awk '/^\[env\]/{ine=1;next} ine&&/^\[/{ine=0} ine&&/=/{print}' .prototools | sed 's/[[:space:]]*=.*//' | grep -v '^file$')
+fi
+for pt in .prototools .prototools.*; do
+  [ -f "$pt" ] || continue
+  plines=$(awk '/^\[plugins/{inp=1;next} inp&&/^\[/{inp=0} inp&&/=/{print}' "$pt")
   while IFS= read -r line; do
     [ -z "$line" ] && continue
     val=$(printf '%s' "$line" | sed 's/^[^=]*=[[:space:]]*//; s/^["'\'']//; s/["'\'']$//')
-    printf '%s' "$val" | grep -Eq '://[^/]+//' && add_v "plugin-locator" ".prototools: locator '$val' has a double slash"
-    printf '%s' "$val" | grep -Eq '(/main/|@main$|/master/|@master$)' && add_v "plugin-locator" ".prototools: locator '$val' pins a moving branch — pin a tag/sha"
+    printf '%s' "$val" | grep -Eq '://[^/]+//' && add_v "plugin-locator" "$pt: locator '$val' has a double slash"
+    printf '%s' "$val" | grep -Eq '(/main/|@main$|/master/|@master$)' && add_v "plugin-locator" "$pt: locator '$val' pins a moving branch — pin a tag/sha"
   done <<< "$plines"
 
-  elines=$(awk '/^\[env\]/{ine=1;next} ine&&/^\[/{ine=0} ine&&/=/{print}' .prototools)
+  elines=$(awk '/^\[env\]/{ine=1;next} ine&&/^\[/{ine=0} ine&&/=/{print}' "$pt")
   while IFS= read -r line; do
     [ -z "$line" ] && continue
     key=$(printf '%s' "$line" | sed 's/[[:space:]]*=.*//')
     case "$key" in
-      ENABLE_MOON|MOON_OFFLINE) add_v "bogus-env" ".prototools [env]: '$key' is not a real moon/proto var — remove it" ;;
+      ENABLE_MOON|MOON_OFFLINE) add_v "bogus-env" "$pt [env]: '$key' is not a real moon/proto var — remove it" ;;
     esac
   done <<< "$elines"
-fi
+
+  # R2.7 advisory: an overlay re-pointing [env].file while re-declaring NONE of
+  # the base's explicit [env] keys — those base values override its dotenv.
+  if [ "$pt" != .prototools ] && [ -n "$base_env_keys" ]; then
+    okeys=$(printf '%s\n' "$elines" | sed 's/[[:space:]]*=.*//')
+    if printf '%s\n' "$okeys" | grep -qx 'file'; then
+      redeclared=0
+      while IFS= read -r k; do
+        [ -z "$k" ] && continue
+        printf '%s\n' "$okeys" | grep -qx "$k" && { redeclared=1; break; }
+      done <<< "$base_env_keys"
+      [ "$redeclared" -eq 0 ] && diag "NOTE: $pt re-points [env].file but re-declares no base explicit [env] key ($(printf '%s' "$base_env_keys" | tr '\n' ' ')) — explicit base keys OVERRIDE the overlay's dotenv (R2.7)"
+    fi
+  fi
+done
 
 # --- advisory notes -----------------------------------------------------------
 command -v moon  >/dev/null 2>&1 || diag "NOTE: moon not on PATH — project graph verified by glob expansion only"

@@ -93,6 +93,21 @@ taskOptions:        # or per-task options:
   envFile: true     # loads <project>/.env
 ```
 
+**R6.4 — environment tiers switch via inline `PROTO_ENV=<env>` + a committed
+`.prototools.<env>` overlay** that re-points `[env].file` at the tier's dotenv
+(mechanics, the R2.7 re-declaration rule, and the three probed merge traps:
+`toolchains-proto.md`). The base config is the default tier when `PROTO_ENV` is
+unset. Do **not** add per-script `--env` flags that source dotenv files by hand
+— that re-implements env loading above the layer that owns it, once per script,
+with hand-rolled parsing. (Exception: a deploy tool *shipping* a tier file to a
+host that runs no proto — that flag selects an artifact, not runtime env.)
+
+**R6.5 — tier-swapped vars are invisible to moon's cache hash** unless declared
+in the task's `inputs` (`$VAR`). A task whose output depends on them either
+declares them or is `cache: false` (migrate/seed tasks already are, per F5).
+Note moon cannot parameterize `envFile` paths — no `envFile: .env.$TIER`; the
+tier switch lives at the proto layer (R6.4), not in moon config.
+
 ## Anti-patterns
 
 - A hand-rolled CI matrix instead of `moon ci` (R7.1).
@@ -100,3 +115,6 @@ taskOptions:        # or per-task options:
 - Caching a non-deterministic task (F5).
 - Secrets inline (F7).
 - Generated output not declared as `outputs` (breaks caching + downstream inputs).
+- Per-script `--env`/tier flags hand-sourcing dotenv files instead of the
+  `PROTO_ENV` overlay (R6.4).
+- A cached task reading tier-swapped vars it never declares as `inputs` (R6.5).

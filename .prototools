@@ -1,4 +1,5 @@
 skillshare = "0.19.10"
+moon = "2.4.5"
 
 [settings]
 auto-clean = true
