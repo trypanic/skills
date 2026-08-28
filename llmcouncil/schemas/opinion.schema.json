@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/trypanic/skills/tree/main/llmcouncil/schemas/opinion.schema.json",
+  "title": "llmcouncil v1 - opinion envelope",
+  "description": "Stage 1 response envelope returned by a council seat. Normative contract; scripts/validate.py implements equivalent checks with the Python stdlib only (no jsonschema dependency required).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol", "stage", "member", "answer_md", "key_points", "confidence"],
+  "properties": {
+    "protocol": { "const": "llmcouncil/v1" },
+    "stage": { "const": "opinion" },
+    "member": {
+      "type": "string",
+      "pattern": "^council-[a-z][a-z-]*$",
+      "description": "Seat name; must equal the 'seat' field of the request envelope."
+    },
+    "answer_md": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Full markdown answer in the language of the question. Must not mention the seat name (anonymized later for peer review)."
+    },
+    "key_points": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 7,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Optional; assumptions the answer relies on."
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Optional; known gaps or caveats of the answer."
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+  }
+}
