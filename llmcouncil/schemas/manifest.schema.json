@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/trypanic/skills/tree/main/llmcouncil/schemas/manifest.schema.json",
+  "title": "llmcouncil v1 - run manifest",
+  "description": "Machine-readable record of a full council run (manifest.json at the run directory root). Normative contract; scripts/validate.py run <dir> implements equivalent checks plus cross-file consistency audits.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol", "run_id", "created_at", "question", "provider", "seats", "chairman", "label_map", "stages", "validation"],
+  "properties": {
+    "protocol": { "const": "llmcouncil/v1" },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[0-9]{8}-[0-9]{6}-[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Must equal the run directory name."
+    },
+    "created_at": { "type": "string", "description": "ISO-8601 timestamp with offset." },
+    "question": { "type": "string", "minLength": 1, "description": "Verbatim, untrimmed user question." },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["harness", "model"],
+      "properties": {
+        "harness": { "type": "string" },
+        "model": { "type": "string", "description": "Model identifier, or 'inherit'. Single provider for every seat." }
+      }
+    },
+    "seats": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^council-[a-z][a-z-]*$" }
+    },
+    "chairman": { "type": "string", "pattern": "^council-[a-z][a-z-]*$" },
+    "label_map": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Z]$" },
+      "additionalProperties": { "type": "string", "pattern": "^council-[a-z][a-z-]*$" },
+      "description": "Label to seat, bijective; labels consecutive from A; only successful Stage 1 seats appear."
+    },
+    "stages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["opinions", "reviews", "aggregate_ranking", "synthesis"],
+      "properties": {
+        "opinions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["member", "label", "status", "envelope"],
+            "properties": {
+              "member": { "type": "string", "pattern": "^council-[a-z][a-z-]*$" },
+              "label": { "type": ["string", "null"], "pattern": "^[A-Z]$" },
+              "status": { "enum": ["ok", "retried", "failed"] },
+              "envelope": { "type": ["string", "null"], "description": "Run-relative path; null iff status is failed." }
+            }
+          }
+        },
+        "reviews": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reviewer", "status", "envelope"],
+            "properties": {
+              "reviewer": { "type": "string", "pattern": "^council-[a-z][a-z-]*$" },
+              "status": { "enum": ["ok", "retried", "failed"] },
+              "envelope": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "aggregate_ranking": {
+          "type": "array",
+          "description": "Sorted best to worst per references/evaluation.md; empty in degraded runs.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "member", "mean_rank", "first_places", "rankings_count"],
+            "properties": {
+              "label": { "type": "string", "pattern": "^[A-Z]$" },
+              "member": { "type": "string", "pattern": "^council-[a-z][a-z-]*$" },
+              "mean_rank": { "type": "number", "minimum": 1 },
+              "first_places": { "type": "integer", "minimum": 0 },
+              "rankings_count": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "synthesis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["chairman", "status", "envelope"],
+          "properties": {
+            "chairman": { "type": "string", "pattern": "^council-[a-z][a-z-]*$" },
+            "status": { "enum": ["ok", "retried", "failed"] },
+            "envelope": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gate_tool", "final_run_check", "notes"],
+      "properties": {
+        "gate_tool": { "type": "string" },
+        "final_run_check": {
+          "enum": ["pending", "pass", "fail", "manual"],
+          "description": "pending until Stage 4; manual = gates applied via checklist (no Python available)."
+        },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/trypanic/skills/tree/main/llmcouncil/schemas/synthesis.schema.json",
+  "title": "llmcouncil v1 - synthesis envelope",
+  "description": "Stage 3 response envelope returned by the Chairman. Normative contract; scripts/validate.py implements equivalent checks with the Python stdlib only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol", "stage", "chairman", "answer_md", "consensus", "disputes", "confidence"],
+  "properties": {
+    "protocol": { "const": "llmcouncil/v1" },
+    "stage": { "const": "synthesis" },
+    "chairman": { "const": "council-chairman" },
+    "answer_md": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The council's final answer: complete, self-contained markdown in the language of the question."
+    },
+    "consensus": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Points the council agreed on; empty array if none."
+    },
+    "disputes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["topic", "positions"],
+        "properties": {
+          "topic": { "type": "string", "minLength": 1 },
+          "positions": { "type": "string", "minLength": 1 }
+        }
+      },
+      "description": "Material disagreements between seats, fairly represented."
+    },
+    "dissent_note": {
+      "type": "string",
+      "description": "Optional; defensible minority view that lost. Empty string if none."
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+  }
+}
