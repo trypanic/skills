@@ -1,20 +1,20 @@
 ---
 name: go-design-principles
-description: Go design judgement complementing samber/cc-skills-golang. Encodes the five SOLID principles framed for Go (SRP by actor/reason-to-change, OCP by composition, LSP by interface contract honesty, ISP small interfaces, DIP consumer-owned dependency direction), interface placement (consumer-owned, define where used, decision tree), KISS, DRY (rule-of-three), object calisthenics for Go (one indent, no else, named-type wrappers, first-class collections, one dot per line), feature-envy detection, forbidden generic package names (util/common/helpers/shared/manager/handler/processor/data), type-driven design (sealed sum-type interfaces, wrapped primitives with validating constructors), immutability, YAGNI. Errors flow through github.com/trypanic/go-sdk/v2/errorkit by default (non-SDK Go falls back to samber stdlib mechanics). Use when asked "is this design idiomatic", "should this be an interface", "apply SOLID", "model this state machine", "wrap this primitive", "spot feature envy", "apply KISS/DRY/SRP". Auto-trigger on primitive obsession, status-string state machines, feature envy, forbidden package names, or speculative interfaces. Defers to samber/cc-skills-golang for naming, structs/interfaces mechanics, DI, context, concurrency, nil-safety, style. Out of scope — folder layout (go-modularization), go-sdk wiring (go-sdk-bootstrap). Skip non-Go projects.
+description: Go design judgement that complements samber/cc-skills-golang and defers to it for naming, structs/interfaces mechanics, DI, context, concurrency, nil-safety, style. Covers SOLID (SRP by actor, OCP by composition, LSP contract honesty, ISP small interfaces, DIP consumer-owned direction) and interface placement. Covers KISS, DRY (rule-of-three), YAGNI, immutability, object calisthenics and type-driven design (sealed sum types, primitive wrappers). Errors use github.com/trypanic/go-sdk/v2/errorkit, or samber stdlib mechanics in non-SDK Go. Use for "is this design idiomatic", "should this be an interface", "apply SOLID", "model this state machine", "wrap this primitive", "spot feature envy", "apply KISS/DRY/SRP". Auto-trigger on primitive obsession, status-string state machines, feature envy, forbidden package names (util/common/helpers/shared/manager/handler/processor/data) or speculative interfaces. Out of scope — folder layout (go-modularization), go-sdk wiring (go-sdk-bootstrap). Skip non-Go projects.
 version: 1.0.0
 ---
 
 # Go Design Principles
 
-Higher-level design judgement for idiomatic Go. Adapted from [NTCoding/claude-skillz](https://github.com/NTCoding/claude-skillz/blob/main/software-design-principles/SKILL.md), Scott Wlaschin's type-driven design, and Jeff Bay's object calisthenics — reframed for Go.
+This skill gives higher-level design judgement for idiomatic Go. It adapts [NTCoding/claude-skillz](https://github.com/NTCoding/claude-skillz/blob/main/software-design-principles/SKILL.md), Scott Wlaschin's type-driven design and Jeff Bay's object calisthenics to Go.
 
-This skill is **complementary**, not standalone. It assumes [`samber/cc-skills-golang`](https://github.com/samber/cc-skills-golang) is installed and active. Anything covered there is **not** repeated here.
+This skill is **complementary**, not standalone. It assumes an installed and active [`samber/cc-skills-golang`](https://github.com/samber/cc-skills-golang). It does **not** repeat any topic that samber covers.
 
 ## Defers To (Do Not Duplicate)
 
 | Topic | Authoritative skill |
 |---|---|
-| Error mechanics **for non-SDK Go only** (`%w`, `errors.Is` / `errors.As`, sentinel/typed errors, `panic` discipline, `slog`, `samber/oops`). trypanic/go-sdk projects create errors with `errorkit` instead — see Critical Rules + appendix | `samber/cc-skills-golang@golang-error-handling` |
+| Error mechanics **for non-SDK Go only** (`%w`, `errors.Is` / `errors.As`, sentinel/typed errors, `panic` discipline, `slog`, `samber/oops`). trypanic/go-sdk projects use `errorkit` to create errors instead — see Critical Rules and [`references/errorkit.md`](references/errorkit.md) | `samber/cc-skills-golang@golang-error-handling` |
 | Identifier naming (`Err` prefix, `New` constructors, receivers, MixedCaps, boolean prefixes, error string casing) | `samber/cc-skills-golang@golang-naming` |
 | Accept-interfaces-return-structs, small interfaces, embedding, type assertions, pointer vs value receivers | `samber/cc-skills-golang@golang-structs-interfaces` |
 | Constructor injection, no globals / no service `init()`, container at composition root | `samber/cc-skills-golang@golang-dependency-injection` |
@@ -24,23 +24,31 @@ This skill is **complementary**, not standalone. It assumes [`samber/cc-skills-g
 | Indentation, early returns, line breaking, variable declaration form | `samber/cc-skills-golang@golang-code-style` |
 | Functional options, constructor patterns, `init()` avoidance | `samber/cc-skills-golang@golang-design-patterns` |
 
-When this skill and a samber skill conflict, the samber skill wins for its topic. This skill only adds principles samber does not cover.
+If this skill and a samber skill conflict, the samber skill wins for its topic.
 
 ## Critical Rules
 
 🚨 **Make illegal states unrepresentable.** Use sealed sum-type interfaces (unexported sealing method) and distinct types per state. Never represent state with a free-form `string`.
 
-🚨 **Wrap primitives in named types.** `type UserID string`, `type Cents int64`, `type Email string`. Validate in a constructor when validation matters. The compiler catches argument-order bugs that bare `string` and `int64` cannot.
+🚨 **Wrap primitives in named types.** `type UserID string`, `type Cents int64`, `type Email string`. Validate in a constructor when validation matters. The compiler catches argument-order bugs that bare `string` and `int64` cannot catch.
 
-🚨 **Forbidden generic package names.** Never `util`, `utils`, `common`, `shared`, `helpers`, `manager`, `handler` (except `http.Handler`), `processor`, `data`. Also forbidden as a package name: `service`. Pick a domain noun.
+🚨 **Forbidden generic package names.** Never use `util`, `utils`, `common`, `shared`, `helpers`, `manager`, `handler` (except `http.Handler`), `processor`, `data` or `service` as a package name. Pick a domain noun.
 
-🚨 **Feature envy is a refactor signal.** A method that touches another type's fields more than its own belongs on that other type.
+🚨 **Feature envy is a refactor signal.** A method that uses another type's fields more than its own fields belongs on that other type.
 
-🚨 **No explanatory comments.** Doc comments on exported identifiers (Go convention) stay — terse and behavioral. Inline `// this does X` comments are a smell — refactor the code instead.
+🚨 **No explanatory comments.** Keep doc comments on exported identifiers (Go convention), and keep them terse and behavioral. An inline `// this does X` comment is a smell. Refactor the code instead.
 
-🚨 **Default to immutability.** Return new values; do not mutate parameters. If you must mutate, the method name and pointer receiver must make it obvious.
+🚨 **Default to immutability.** Return new values. Do not mutate parameters. If you must mutate, the method name and the pointer receiver must make the mutation obvious.
 
-🚨 **Errors flow through `errorkit`, not stdlib.** In trypanic/go-sdk projects, create every error with `errorkit.NewError(code)` — **never** `errors.New` or `fmt.Errorf` as a final return; remove stdlib error definitions so nothing competes with the `*errorkit.AppError` flow. Wrap once at the boundary with `errorkit.NewError(code).With(errorkit.WithWrapped(err))`. Find an existing `*AppError` anywhere in the chain with `errorkit.As(err)` and preserve it — never re-wrap, and never use a direct type assertion (it misses wrapped errors). Register service-specific codes via `errorkit.MustRegister` in `init()`. **Only** when the project does not import `github.com/trypanic/go-sdk/v2` do you fall back to stdlib error mechanics (`samber/cc-skills-golang@golang-error-handling`). See the appendix.
+🚨 **Errors flow through `errorkit`, not stdlib.** In trypanic/go-sdk projects:
+
+- Create every error with `errorkit.NewError(code)`. **Never** use `errors.New` or `fmt.Errorf` as a final return.
+- Remove stdlib error definitions, so that nothing competes with the `*errorkit.AppError` flow.
+- Wrap once at the boundary with `errorkit.NewError(code).With(errorkit.WithWrapped(err))`.
+- Use `errorkit.As(err)` to find an existing `*AppError` anywhere in the chain, and preserve it. Never re-wrap it. Never use a direct type assertion to find it, because a direct type assertion misses wrapped errors.
+- Register service-specific codes with `errorkit.MustRegister` in `init()`.
+
+Use stdlib error mechanics (`samber/cc-skills-golang@golang-error-handling`) **only** when the project does not import `github.com/trypanic/go-sdk/v2`. See [`references/errorkit.md`](references/errorkit.md).
 
 ## When This Applies
 
@@ -60,13 +68,13 @@ When this skill and a samber skill conflict, the samber skill wins for its topic
 
 ## KISS — Keep It Simple, Stupid
 
-Build the simplest thing that solves the problem in front of you.
+Build the simplest thing that solves the current problem.
 
-- No interface for a single implementation **unless it is a consumer-owned port (layer boundary) or a required test seam** — see "Interfaces in Go" below. Multiplicity is not the only valid reason; decoupling and testability (DIP) are. Never export a speculative interface a producer guessed at.
+- No interface for a single implementation **unless it is a consumer-owned port (layer boundary) or a required test seam**. Never export a speculative interface that a producer guessed at. See "Interfaces in Go".
 - No generics until the second concrete use forces them.
-- No premature abstraction layer. A struct with three fields beats a `Builder` + `Options` + `Factory`.
+- No premature abstraction layer. A struct with three fields is better than a `Builder` + `Options` + `Factory`.
 - No reflection unless the standard library or a codec demands it.
-- A function that reads top-to-bottom beats a chain of one-liners.
+- A function that reads top-to-bottom is better than a chain of one-liners.
 
 ```go
 // ❌ Over-engineered
@@ -83,30 +91,30 @@ func NewUserRepository(db *database.Pool) *UserRepository { return &UserReposito
 
 ## DRY — Don't Repeat Yourself (with Go restraint)
 
-Duplicated *knowledge* is the bug. Duplicated *code* is sometimes the right call.
+Duplicated *knowledge* is the bug. Duplicated *code* is sometimes the right choice.
 
 - **Rule of three.** Extract on the third repetition, not the second. Two similar blocks may diverge.
-- **A little copying is better than a little dependency** (Go proverb). Copying ten lines beats coupling two packages.
+- **A little copying is better than a little dependency** (Go proverb). Copying ten lines is better than coupling two packages.
 - Distinguish *coincidental* duplication (same shape, different reason to change) from *essential* duplication (same business rule in two places).
-- Extract because both call sites must change together when the rule changes — never because shapes look alike.
+- Extract because both call sites must change together when the rule changes. Never extract because shapes look alike.
 
 ## SOLID in Go
 
-SOLID is not OO ceremony — it is dependency and change management (Uncle Bob, *Solid Relevance*), and in Go its cornerstone is the **small interface** (Dave Cheney, *SOLID Go Design*). Go expresses SOLID through **packages, composition, and tiny consumer-owned interfaces**, not class hierarchies.
+SOLID is not OO ceremony. It is dependency and change management (Uncle Bob, *Solid Relevance*). In Go, its cornerstone is the **small interface** (Dave Cheney, *SOLID Go Design*). Go expresses SOLID through **packages, composition, and tiny consumer-owned interfaces**, not class hierarchies.
 
 | Principle | Go reframing |
 |---|---|
 | SRP | One actor / one reason to change per type, function, package |
-| OCP | Extend via composition + interface satisfaction; don't modify callers |
+| OCP | Extend via composition + interface satisfaction. Do not change callers |
 | LSP | Every interface implementation honors the interface's *behavioral* contract |
-| ISP | Interfaces are tiny (1–3 methods); the consumer declares only what it needs |
-| DIP | High-level code owns the abstraction; adapters depend inward |
+| ISP | Interfaces are tiny (1–3 methods). The consumer declares only what it needs |
+| DIP | High-level code owns the abstraction. Adapters depend inward |
 
 ## SRP — Single Responsibility Principle
 
-One reason to change per type, function, or package — where "reason to change" means **one actor/stakeholder**. Report *content* (owned by finance) and report *format* (owned by ops) are two responsibilities even inside one struct.
+Each type, function, or package has one reason to change. A "reason to change" means **one actor/stakeholder**. Report *content* (owned by finance) and report *format* (owned by ops) are two responsibilities, even inside one struct.
 
-- A function name with "and" in it is two functions. Split.
+- A function name that contains "and" is two functions. Split it.
 - A package that mixes HTTP transport, business logic, and persistence is three packages.
 - A struct with two unrelated method clusters (one mutates `cache`, one talks to `db`) is two structs.
 - A doc comment that needs a list to describe one identifier signals two responsibilities.
@@ -122,7 +130,7 @@ func (s *OrderService) Submit(ctx context.Context, o Order) error { /* ... */ }
 
 ## OCP — Open/Closed Principle
 
-Open for extension, closed for modification. Go has no inheritance — extend through **composition and interface satisfaction**, never by editing existing callers.
+Open for extension, closed for modification. Go has no inheritance. Extend through **composition and interface satisfaction**. Never extend by changing existing callers.
 
 - New behavior = a new type that satisfies an existing small interface. The dispatcher that ranges over that interface never changes.
 - Functional options, middleware/decorator chains, and `io.Writer` wrappers are Go's OCP.
@@ -141,14 +149,14 @@ type SlackNotifier struct{ /* ... */ }                  // open: new impl, no ed
 func (SlackNotifier) Notify(ctx context.Context, m Message) error { /* ... */ }
 ```
 
-A growing `switch` over a type tag that must gain a `case` for every new variant is the OCP smell — replace with interface dispatch. Exception: a *sealed* sum type whose cases are deliberately closed (see Type-Driven Design) trades OCP for compiler-checked exhaustiveness on purpose.
+A growing `switch` over a type tag that must gain a `case` for every new variant is the OCP smell. Replace it with interface dispatch. Exception: a *sealed* sum type (see Type-Driven Design) closes its cases deliberately. It trades OCP for compiler-enforced exhaustiveness on purpose.
 
 ## LSP — Liskov Substitution Principle
 
-Go has no subclassing, so LSP is about **interface contract honesty**: every implementation must honor the documented behavior of the interface, not merely its signature. Structural typing makes accidental signature-match easy and contract violations silent.
+Go has no subclassing, so LSP is about **interface contract honesty**. Every implementation must honor the documented behavior of the interface, not only its signature. Structural typing makes an accidental signature match easy and makes contract violations silent.
 
 - Document behavioral contracts on the interface: error semantics, nil handling, idempotency, ordering. An implementation that weakens them is not substitutable.
-- A `Reader` that returns `n > 0` *and* `io.EOF` inconsistently breaks substitutability even though it compiles.
+- A `Reader` that returns `n > 0` *and* `io.EOF` inconsistently breaks substitutability, even though it compiles.
 
 ```go
 // ❌ LSP violation: the Store contract says "returns ErrNotFound when absent";
@@ -167,10 +175,10 @@ func (m memStore) Get(id ID) (*User, error) {
 
 ## ISP — Interface Segregation Principle
 
-The cornerstone of SOLID in Go: **the smaller the interface, the more powerful it is** (Cheney). Split fat interfaces by *consumer need*, not producer convenience.
+**The smaller the interface, the more powerful it is** (Cheney). Split fat interfaces by *consumer need*, not by producer convenience.
 
 - Prefer 1–3 method interfaces. `io.Reader` / `io.Writer` (one method) are the gold standard.
-- A **God interface** (`Repository` with 20 methods) forces every consumer and every fake to depend on methods it never calls. Split it so each consumer sees only what it uses.
+- A **God interface** (`Repository` with 20 methods) forces every consumer and every fake to depend on methods it never calls. Split it so that each consumer sees only what it uses.
 - Interface mechanics (embedding, composing small interfaces into larger ones) → `samber/cc-skills-golang@golang-structs-interfaces`. This section governs interface *size and shape*.
 
 ```go
@@ -187,10 +195,10 @@ type UserWriter interface{ Create(ctx context.Context, u *User) error }
 
 ## DIP — Dependency Inversion Principle
 
-High-level policy must not depend on low-level detail; both depend on an abstraction — and in Go **the abstraction belongs with the high-level consumer**, which inverts the source-code dependency.
+High-level policy must not depend on low-level detail. Both depend on an abstraction. In Go, **the abstraction belongs with the high-level consumer**, and this inverts the source-code dependency.
 
 - The interactor (high-level) defines the port interface it needs. The Postgres adapter (low-level) imports the port and satisfies it. The interactor never imports the adapter.
-- This is the same import-direction invariant enforced by **go-modularization** (`domain` / `ports` / `interactor` never import adapters). For concrete folder rules and the verifier, see that skill.
+- **go-modularization** enforces the same import-direction invariant (`domain` / `ports` / `interactor` never import adapters). For concrete folder rules and the verifier, see that skill.
 
 ```go
 // billing package (high-level) OWNS the abstraction it depends on
@@ -205,9 +213,7 @@ type Charger struct{ store ChargeStore }   // depends on its own abstraction, no
 
 ## Interfaces in Go
 
-Where interfaces come from, and whether one should exist at all.
-
-**Consumer-owned interfaces.** Define an interface in the package that *uses* it, listing only the methods that consumer calls. Do **not** ship a producer-side interface "for flexibility" next to its single implementation — that is interface pollution. Accept interfaces; return concrete structs.
+**Consumer-owned interfaces.** Define an interface in the package that *uses* it. List only the methods that the consumer calls. Do **not** ship a producer-side interface "for flexibility" next to its single implementation. That is interface pollution. Accept interfaces and return concrete structs.
 
 **Decision tree — should this be an interface?**
 
@@ -218,31 +224,31 @@ Is it required to inject a test double at a boundary?     → yes → interface 
 Otherwise                                                → NO  → use the concrete struct
 ```
 
-The middle two cases are why "no interface for a single implementation" is a guideline, not a law: ports and test seams legitimately have one production implementation. The justification is decoupling/testability (DIP), never speculation. Test-double placement at port boundaries: see `go-testing-strategy`.
+The middle two cases make "no interface for a single implementation" a guideline, not a law. Ports and test seams legitimately have one production implementation. The justification is decoupling/testability (DIP), never speculation. For test-double placement at port boundaries, see `go-testing-strategy`.
 
 ## Object Calisthenics — Adapted for Go
 
-Jeff Bay's calisthenics, with the two rules already covered by samber dropped (rule 6 "no abbreviations" → see `golang-naming`; rule 8 "no getters/setters" → see `golang-naming` and `golang-structs-interfaces`).
+This section adapts Jeff Bay's calisthenics. It drops the two rules that samber already covers: rule 6 "no abbreviations" (see `golang-naming`) and rule 8 "no getters/setters" (see `golang-naming` and `golang-structs-interfaces`).
 
 ### The Six Remaining Rules
 
-1. **One level of indentation per method.** Up to two tolerated. Three indents is a smell — extract. (Indentation/early-return mechanics: see `golang-code-style`.)
+1. **One level of indentation per method.** This rule tolerates up to two levels. Three levels are a smell, so extract code. For indentation and early-return mechanics, see `golang-code-style`.
 2. **Don't use `else`.** Use early returns and guard clauses.
 3. **Wrap all primitives and IDs in named types.** `type UserID string`, `type Cents int64`. Validate in a constructor when validation matters.
 4. **First-class collections.** A struct whose only field is a slice or map should contain nothing else. Operations live on the collection type.
-5. **One dot per line.** Honors the Law of Demeter. Reach for what you know, not for the friend of a friend. Fluent builders are the exception.
-6. **Keep all entities small.** Files under ~500 lines. Functions under ~50. Packages under ~10 source files. Structs over seven fields deserve a second look.
+5. **One dot per line.** This rule honors the Law of Demeter. Use what you know, not the friend of a friend. Fluent builders are the exception.
+6. **Keep all entities small.** Keep files under ~500 lines, functions under ~50 lines and packages under ~10 source files. A struct with more than seven fields deserves a second look.
 
 ### When to Apply
 
 - Designing a new type or package
 - Refactoring
 - Code review
-- When reading existing code aloud feels noisy
+- When you read existing code aloud and it feels noisy
 
 ## Feature Envy Detection
 
-A method that uses another type's data more than its own belongs on that other type.
+A method that uses another type's data more than its own data belongs on that other type.
 
 ```go
 // ❌ FEATURE ENVY — InvoiceGenerator obsesses over Order's internals
@@ -269,22 +275,14 @@ func (g *InvoiceGenerator) Generate(o Order) Invoice {
 }
 ```
 
-**Detection heuristic:** count receiver-field references vs argument-field references. More argument references? Feature envy.
+**Detection heuristic:** count the receiver-field references and the argument-field references. If there are more argument references, the method has feature envy.
 
 ## Forbidden Generic Package and Type Names
 
-`golang-naming` covers identifier naming in general. This skill adds a sharper, project-wide ban on generic placeholders.
+`golang-naming` covers identifier naming in general. This skill adds a stricter, project-wide ban on generic placeholders. For **packages, types, and exported functions**, never use:
 
-For **packages, types, and exported functions**, never use:
-
-- `data`
-- `util` / `utils`
-- `helper` / `helpers`
-- `common`
-- `shared`
-- `manager`
+- `data`, `util` / `utils`, `helper` / `helpers`, `common`, `shared`, `manager`, `processor`
 - `handler` (allowed only where Go's HTTP convention demands it: `http.Handler`)
-- `processor`
 - `service` *as a package name* (acceptable as a type suffix when the domain noun is clear, e.g. `BillingService`)
 
 These names tell the reader nothing about what the code does. Pick a domain noun.
@@ -301,11 +299,15 @@ type InvoiceCalculator struct{ taxRates TaxRateTable }
 func (c *InvoiceCalculator) Calculate(o Order) Invoice { /* ... */ }
 ```
 
-**Package-name checklist:** is it a single, lowercase domain noun? Does it describe what's inside, not where it sits? Does `package X` make the call site read like English (`billing.InvoiceCalculator`, not `utils.DataProcessor`)?
+**Package-name checklist:**
+
+- Is it a single, lowercase domain noun?
+- Does it describe what is inside, not where it sits?
+- Does `package X` make the call site read like English (`billing.InvoiceCalculator`, not `utils.DataProcessor`)?
 
 ## Type-Driven Design
 
-Express domain rules in the type system so the compiler enforces them.
+Express domain rules in the type system, so that the compiler enforces them.
 
 ### Make Illegal States Unrepresentable
 
@@ -339,7 +341,7 @@ func (ConfirmedOrder) isOrder()   {}
 func (ShippedOrder) isOrder()     {}
 ```
 
-The unexported `isOrder()` method seals the union — only types in this package can implement it. Dispatch with a type switch:
+The unexported `isOrder()` method seals the union. Only types in this package can implement it. Dispatch with a type switch:
 
 ```go
 switch o := order.(type) {
@@ -354,9 +356,7 @@ case ShippedOrder:
 
 ### Transitions Are Methods on the Source State
 
-Each legal state change is a method on the source state. Illegal transitions are simply absent from the API — `UnconfirmedOrder` has no `Ship` method, so calling it is a compile error, not a runtime check. Validation that survives the type system returns an `error`.
-
-Validation that survives the type system returns an error. By default that error is `errorkit` (codes registered once via `errorkit.MustRegister` in `init()` — see appendix); non-SDK Go falls back to sentinel errors + `errors.Is` (`samber/cc-skills-golang@golang-error-handling`).
+Each legal state change is a method on the source state. The API does not contain illegal transitions. `UnconfirmedOrder` has no `Ship` method, so a call to it is a compile error, not a runtime validation. Validation that survives the type system returns an `error`. By default, that error is an `errorkit` error. Register its codes once with `errorkit.MustRegister` in `init()` (see [`references/errorkit.md`](references/errorkit.md)).
 
 ```go
 // Codes ERR_ORDER_EMPTY / ERR_ORDER_TRACKING_REQUIRED registered in init() — see appendix.
@@ -387,7 +387,7 @@ func (o ConfirmedOrder) Ship(trackingNumber string, at time.Time) (ShippedOrder,
 }
 ```
 
-Non-SDK Go: replace each `errorkit.NewError(...)` with a sentinel (`var ErrOrderEmpty = errors.New("order: cannot confirm with no items")`) and compare with `errors.Is`. Code registration for the SDK variant: see the appendix.
+Non-SDK Go: replace each `errorkit.NewError(...)` with a sentinel error, for example `var ErrOrderEmpty = errors.New("order: cannot confirm with no items")`. Compare with `errors.Is` (see `samber/cc-skills-golang@golang-error-handling`).
 
 ### Wrap Primitives in Named Types
 
@@ -416,11 +416,11 @@ func NewEmail(s string) (Email, error) {
 }
 ```
 
-Non-SDK Go: return `fmt.Errorf("email: invalid address %q", s)` instead — see `samber/cc-skills-golang@golang-error-handling`.
+Non-SDK Go: return `fmt.Errorf("email: invalid address %q", s)` instead (see `samber/cc-skills-golang@golang-error-handling`).
 
 ## Prefer Immutability
 
-Default to immutable data. Mutation breeds aliasing bugs, races, and surprising callers.
+Default to immutable data. Mutation causes aliasing bugs and races, and it surprises callers.
 
 ```go
 // ❌ Mutates the caller's Order
@@ -441,14 +441,14 @@ func Process(o Order) Order {
 ### Application Rules
 
 - Prefer value receivers when the method does not mutate state.
-- Prefer returning a new struct over mutating a parameter.
-- Copy slices and maps before storing them in a struct field — slices share backing arrays. (Append-aliasing details: `golang-safety`.)
-- `for _, x := range items` — `x` is a copy; mutating it does nothing. Use the index form when you mean to mutate.
-- If you must mutate, the function name should make it obvious (`AppendItem`, `SetStatus`), and the receiver must be a pointer.
+- Prefer to return a new struct, not to mutate a parameter.
+- Copy slices and maps before you store them in a struct field. Slices share backing arrays. For append-aliasing details, see `golang-safety`.
+- In `for _, x := range items`, `x` is a copy, and a mutation of `x` does nothing. Use the index form when you intend to mutate.
+- If you must mutate, the function name should make the mutation obvious (`AppendItem`, `SetStatus`). The receiver must be a pointer.
 
 ## YAGNI — You Aren't Gonna Need It
 
-Don't build features until they're actually needed. Speculative code costs time to write, time to maintain, and is usually wrong by the time the real requirement arrives.
+Do not build features until you actually need them. Speculative code costs time to write and time to maintain. It is usually wrong by the time the real requirement arrives.
 
 ```go
 // ❌ Over-engineered for hypothetical futures
@@ -472,101 +472,23 @@ type PaymentProcessor interface {
 
 ## Anti-Patterns Cheat Sheet
 
-Stop if you're about to:
+Stop if you are about to:
 
 - Represent state with a free-form `string` → sealed sum-type interface.
 - Pass raw `string` / `int64` IDs and amounts → wrap in named types (`UserID`, `Cents`).
-- Move logic out of the type whose data it touches → keep it on the envied type.
+- Move logic out of the type whose data it uses → keep it on the envied type.
 - Name a package `util`, `common`, `helpers`, `shared`, `manager`, `handler`, `processor`, `data`, or `service` → use a domain noun.
-- Write a `// this does X` comment → make the code self-explanatory; keep doc comments only.
+- Write a `// this does X` comment → make the code self-explanatory. Keep only doc comments.
 - Mutate a parameter without a pointer receiver and an explicit method name → return a new value.
 - Build "for later" → build for now.
-- Add a speculative interface for a single implementation → wait for the second use, or justify it as a consumer-owned port / test seam.
-- Export a fat "God interface" (15+ methods) → segregate by consumer need (ISP); 1–3 methods each.
-- Reach for `errors.New` / `fmt.Errorf` in a trypanic/go-sdk project → use `errorkit.NewError(code)`.
+- Add a speculative single-implementation interface → wait for the second use, or justify it as a consumer-owned port / test seam.
+- Export a fat "God interface" (15+ methods) → segregate by consumer need (ISP), with 1–3 methods each.
+- Use `errors.New` / `fmt.Errorf` in a trypanic/go-sdk project → use `errorkit.NewError(code)`.
 - Extract a helper after only two repetitions → wait for the third.
 - Use "and" in a function or method name → split it.
 
-For broader anti-patterns (`%v` instead of `%w`, missing `errors.Is`, ignoring `error`, comma-ok, nil-interface trap, goroutine leaks, `init()` for service setup, getter/setter `Get*` prefix, deep indentation), defer to the corresponding samber skill.
-
----
+Defer to the corresponding samber skill for broader anti-patterns. Examples: `%v` instead of `%w`, missing `errors.Is`, ignoring `error`, comma-ok, nil-interface trap, goroutine leaks, `init()` for service setup, getter/setter `Get*` prefix, deep indentation.
 
 ## Appendix: trypanic/go-sdk Projects — `errorkit`
 
-Apply this section **only** when the project imports `github.com/trypanic/go-sdk/v2` (a project still on the v1 path `github.com/trypanic/go-sdk` must migrate first — see the `go-sdk-bootstrap` skill). In SDK-based services, errors flow through `*errorkit.AppError`, which carries a code, HTTP status, retriability, and a wrapped cause.
-
-`errorkit` **replaces** the idiomatic-Go error mechanics from `samber/cc-skills-golang@golang-error-handling` for service code in trypanic/go-sdk projects. The principles still hold (return `error`, fail fast, wrap once); the mechanism changes.
-
-**Return `error`, carrying an `*AppError`.** Do not pin the signature to `*errorkit.AppError`. For expected input rejection, `errorkit.NewWithoutStack(code)` skips the stack capture that `NewError` performs.
-
-```go
-func (s *BillingService) Charge(ctx context.Context, in ChargeInput) (Receipt, error) {
-    if in.Amount <= 0 {
-        return Receipt{}, errorkit.NewError(errorkit.ERR_VALIDATION).
-            With(errorkit.WithReason("amount must be positive"))
-    }
-    // ...
-}
-```
-
-**Wrap once at the boundary, preserve existing `*AppError`.** Re-wrapping with `ERR_INTERNAL` destroys the original code, HTTP status, and retriability. Find it with `errorkit.As`, which walks wrapped and joined chains; match codes with `errorkit.HasCode(err, code)`, not error text.
-
-```go
-result, err := svc.Do(ctx, input)
-if err != nil {
-    if appErr, ok := errorkit.As(err); ok {
-        logger.ErrorCtx(ctx, appErr, "svc.Do failed")
-        return appErr
-    }
-    wrapped := errorkit.NewError(errorkit.ERR_INTERNAL).
-        With(errorkit.WithWrapped(err))
-    logger.ErrorCtx(ctx, wrapped, "svc.Do failed")
-    return wrapped
-}
-```
-
-**Register service-specific codes in `init()`.**
-
-```go
-func init() {
-    errorkit.MustRegister(errorkit.Metadata{
-        Code:        "ERR_BILLING_PROVIDER_DOWN",
-        Type:        errorkit.ErrorTypeExternal,
-        Group:       errorkit.GroupUnknown,
-        Category:    "billing",
-        Description: "Billing provider is unreachable",
-        HTTPStatus:  503,
-        Retriable:   true,
-    })
-}
-```
-
-Do **not** patch the SDK's `codes.go` from outside the SDK repo.
-
-**Sealed-transition codes.** The sealed-transition example under "Type-Driven Design" returns `errorkit.NewError("ERR_ORDER_EMPTY")` and `errorkit.NewError("ERR_ORDER_TRACKING_REQUIRED")`. Register both codes once at startup:
-
-```go
-func init() {
-    errorkit.MustRegister(errorkit.Metadata{
-        Code: "ERR_ORDER_EMPTY", Type: errorkit.ErrorTypeInternal,
-        Group: errorkit.GroupData, Category: "orders",
-        Description: "Cannot confirm an order with no items",
-        HTTPStatus: 422, Retriable: false,
-    })
-    errorkit.MustRegister(errorkit.Metadata{
-        Code: "ERR_ORDER_TRACKING_REQUIRED", Type: errorkit.ErrorTypeInternal,
-        Group: errorkit.GroupData, Category: "orders",
-        Description: "Tracking number required to ship",
-        HTTPStatus: 422, Retriable: false,
-    })
-}
-```
-
-**Forbidden in errorkit-using service code:**
-
-- `errors.New` / `fmt.Errorf` as the final return — use `errorkit.NewError(code)`.
-- Re-wrapping an `*AppError` (double-wrap).
-- Detecting an `*AppError` with a direct type assertion `err.(*errorkit.AppError)` — use `errorkit.As(err)`.
-- Exposing `*errorkit.AppError` in a function signature.
-
-For background on the SDK's wrapping rules and project setup, see the `go-sdk-bootstrap` skill.
+This appendix is in [`references/errorkit.md`](references/errorkit.md). Apply it **only** when the project imports `github.com/trypanic/go-sdk/v2`.
