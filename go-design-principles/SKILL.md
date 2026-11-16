@@ -1,6 +1,6 @@
 ---
 name: go-design-principles
-description: Go design judgement complementing samber/cc-skills-golang. Encodes the five SOLID principles framed for Go (SRP by actor/reason-to-change, OCP by composition, LSP by interface contract honesty, ISP small interfaces, DIP consumer-owned dependency direction), interface placement (consumer-owned, define where used, decision tree), KISS, DRY (rule-of-three), object calisthenics for Go (one indent, no else, named-type wrappers, first-class collections, one dot per line), feature-envy detection, forbidden generic package names (util/common/helpers/shared/manager/handler/processor/data), type-driven design (sealed sum-type interfaces, wrapped primitives with validating constructors), immutability, YAGNI. Errors flow through github.com/trypanic/go-sdk/errorkit by default (non-SDK Go falls back to samber stdlib mechanics). Use when asked "is this design idiomatic", "should this be an interface", "apply SOLID", "model this state machine", "wrap this primitive", "spot feature envy", "apply KISS/DRY/SRP". Auto-trigger on primitive obsession, status-string state machines, feature envy, forbidden package names, or speculative interfaces. Defers to samber/cc-skills-golang for naming, structs/interfaces mechanics, DI, context, concurrency, nil-safety, style. Out of scope — folder layout (go-modularization), go-sdk wiring (go-sdk-bootstrap). Skip non-Go projects.
+description: Go design judgement complementing samber/cc-skills-golang. Encodes the five SOLID principles framed for Go (SRP by actor/reason-to-change, OCP by composition, LSP by interface contract honesty, ISP small interfaces, DIP consumer-owned dependency direction), interface placement (consumer-owned, define where used, decision tree), KISS, DRY (rule-of-three), object calisthenics for Go (one indent, no else, named-type wrappers, first-class collections, one dot per line), feature-envy detection, forbidden generic package names (util/common/helpers/shared/manager/handler/processor/data), type-driven design (sealed sum-type interfaces, wrapped primitives with validating constructors), immutability, YAGNI. Errors flow through github.com/trypanic/go-sdk/v2/errorkit by default (non-SDK Go falls back to samber stdlib mechanics). Use when asked "is this design idiomatic", "should this be an interface", "apply SOLID", "model this state machine", "wrap this primitive", "spot feature envy", "apply KISS/DRY/SRP". Auto-trigger on primitive obsession, status-string state machines, feature envy, forbidden package names, or speculative interfaces. Defers to samber/cc-skills-golang for naming, structs/interfaces mechanics, DI, context, concurrency, nil-safety, style. Out of scope — folder layout (go-modularization), go-sdk wiring (go-sdk-bootstrap). Skip non-Go projects.
 version: 1.0.0
 ---
 
@@ -40,7 +40,7 @@ When this skill and a samber skill conflict, the samber skill wins for its topic
 
 🚨 **Default to immutability.** Return new values; do not mutate parameters. If you must mutate, the method name and pointer receiver must make it obvious.
 
-🚨 **Errors flow through `errorkit`, not stdlib.** In trypanic/go-sdk projects, create every error with `errorkit.NewError(code)` — **never** `errors.New` or `fmt.Errorf` as a final return; remove stdlib error definitions so nothing competes with the `*errorkit.AppError` flow. Wrap once at the boundary with `errorkit.NewError(code).With(errorkit.WithWrapped(err))`. Type-switch to preserve an existing `*AppError` — never re-wrap. Register service-specific codes via `errorkit.MustRegister` in `init()`. **Only** when the project does not import `github.com/trypanic/go-sdk` do you fall back to stdlib error mechanics (`samber/cc-skills-golang@golang-error-handling`). See the appendix.
+🚨 **Errors flow through `errorkit`, not stdlib.** In trypanic/go-sdk projects, create every error with `errorkit.NewError(code)` — **never** `errors.New` or `fmt.Errorf` as a final return; remove stdlib error definitions so nothing competes with the `*errorkit.AppError` flow. Wrap once at the boundary with `errorkit.NewError(code).With(errorkit.WithWrapped(err))`. Find an existing `*AppError` anywhere in the chain with `errorkit.As(err)` and preserve it — never re-wrap, and never use a direct type assertion (it misses wrapped errors). Register service-specific codes via `errorkit.MustRegister` in `init()`. **Only** when the project does not import `github.com/trypanic/go-sdk/v2` do you fall back to stdlib error mechanics (`samber/cc-skills-golang@golang-error-handling`). See the appendix.
 
 ## When This Applies
 
@@ -366,7 +366,7 @@ func (o UnconfirmedOrder) Confirm(confirmationNumber string) (ConfirmedOrder, er
     }
     if confirmationNumber == "" {
         return ConfirmedOrder{}, errorkit.NewError(errorkit.ERR_VALIDATION).
-            With(errorkit.WithMessage("order: confirmationNumber is required"))
+            With(errorkit.WithReason("order: confirmationNumber is required"))
     }
     return ConfirmedOrder{
         Items:              append([]Item(nil), o.Items...),
@@ -410,7 +410,7 @@ type Email string
 func NewEmail(s string) (Email, error) {
     if !strings.Contains(s, "@") {
         return "", errorkit.NewError(errorkit.ERR_VALIDATION).
-            With(errorkit.WithMessage(fmt.Sprintf("email: invalid address %q", s)))
+            With(errorkit.WithReason("email: invalid address %q", s))
     }
     return Email(s), nil
 }
@@ -493,28 +493,28 @@ For broader anti-patterns (`%v` instead of `%w`, missing `errors.Is`, ignoring `
 
 ## Appendix: trypanic/go-sdk Projects — `errorkit`
 
-Apply this section **only** when the project imports `github.com/trypanic/go-sdk`. In SDK-based services, errors flow through `*errorkit.AppError`, which carries a code, HTTP status, retriability, and a wrapped cause.
+Apply this section **only** when the project imports `github.com/trypanic/go-sdk/v2` (a project still on the v1 path `github.com/trypanic/go-sdk` must migrate first — see the `go-sdk-bootstrap` skill). In SDK-based services, errors flow through `*errorkit.AppError`, which carries a code, HTTP status, retriability, and a wrapped cause.
 
 `errorkit` **replaces** the idiomatic-Go error mechanics from `samber/cc-skills-golang@golang-error-handling` for service code in trypanic/go-sdk projects. The principles still hold (return `error`, fail fast, wrap once); the mechanism changes.
 
-**Return `error`, dynamic type `*AppError`.** Do not pin the signature to `*errorkit.AppError`.
+**Return `error`, carrying an `*AppError`.** Do not pin the signature to `*errorkit.AppError`. For expected input rejection, `errorkit.NewWithoutStack(code)` skips the stack capture that `NewError` performs.
 
 ```go
 func (s *BillingService) Charge(ctx context.Context, in ChargeInput) (Receipt, error) {
     if in.Amount <= 0 {
         return Receipt{}, errorkit.NewError(errorkit.ERR_VALIDATION).
-            With(errorkit.WithMessage("amount must be positive"))
+            With(errorkit.WithReason("amount must be positive"))
     }
     // ...
 }
 ```
 
-**Wrap once at the boundary, preserve existing `*AppError`.** Re-wrapping with `ERR_INTERNAL` destroys the original code, HTTP status, and retriability.
+**Wrap once at the boundary, preserve existing `*AppError`.** Re-wrapping with `ERR_INTERNAL` destroys the original code, HTTP status, and retriability. Find it with `errorkit.As`, which walks wrapped and joined chains; match codes with `errorkit.HasCode(err, code)`, not error text.
 
 ```go
 result, err := svc.Do(ctx, input)
 if err != nil {
-    if appErr, ok := err.(*errorkit.AppError); ok {
+    if appErr, ok := errorkit.As(err); ok {
         logger.ErrorCtx(ctx, appErr, "svc.Do failed")
         return appErr
     }
@@ -548,14 +548,14 @@ Do **not** patch the SDK's `codes.go` from outside the SDK repo.
 ```go
 func init() {
     errorkit.MustRegister(errorkit.Metadata{
-        Code: "ERR_ORDER_EMPTY", Type: errorkit.ErrorTypeValidation,
-        Group: errorkit.GroupUnknown, Category: "orders",
+        Code: "ERR_ORDER_EMPTY", Type: errorkit.ErrorTypeInternal,
+        Group: errorkit.GroupData, Category: "orders",
         Description: "Cannot confirm an order with no items",
         HTTPStatus: 422, Retriable: false,
     })
     errorkit.MustRegister(errorkit.Metadata{
-        Code: "ERR_ORDER_TRACKING_REQUIRED", Type: errorkit.ErrorTypeValidation,
-        Group: errorkit.GroupUnknown, Category: "orders",
+        Code: "ERR_ORDER_TRACKING_REQUIRED", Type: errorkit.ErrorTypeInternal,
+        Group: errorkit.GroupData, Category: "orders",
         Description: "Tracking number required to ship",
         HTTPStatus: 422, Retriable: false,
     })
@@ -566,6 +566,7 @@ func init() {
 
 - `errors.New` / `fmt.Errorf` as the final return — use `errorkit.NewError(code)`.
 - Re-wrapping an `*AppError` (double-wrap).
+- Detecting an `*AppError` with a direct type assertion `err.(*errorkit.AppError)` — use `errorkit.As(err)`.
 - Exposing `*errorkit.AppError` in a function signature.
 
 For background on the SDK's wrapping rules and project setup, see the `go-sdk-bootstrap` skill.
