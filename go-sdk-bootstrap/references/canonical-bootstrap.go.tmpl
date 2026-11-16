@@ -1,82 +1,172 @@
-// Canonical bootstrap for a Go service that depends on github.com/trypanic/go-sdk.
+// Canonical bootstrap for a Go service that depends on
+// github.com/trypanic/go-sdk/v2.
 //
-// Replace the {{SERVICE_NAME}} / {{SERVICE_VERSION}} / {{OTLP_ENDPOINT}}
-// placeholders before saving as cmd/main.go for single repo or services/cmd/main.go for monorepo
+// Replace the {{SERVICE_NAME}} / {{SERVICE_VERSION}} placeholders before saving
+// as cmd/main.go (single-service repo) or services/<service>/cmd/main.go
+// (monorepo).
 //
-// Verified against github.com/trypanic/go-sdk@main.
+// Derived from the SDK's AGENTS.md §3. Verified with `go build` and `go vet`
+// against github.com/trypanic/go-sdk/v2@v2.0.0.
 //
 // Conventions enforced:
-//   1. logger.SetupOTLP runs before logger.Init so the OTLP writer is ready
-//      when the global logger is installed.
-//   2. serviceName is the same string passed to OTLP, logger, and the
-//      telemetry instrumenter, so logs and traces correlate.
-//   3. One *telemetry.Instrumenter is constructed once and passed down.
-//   4. Pools (HTTP client, pgx pool, messaging) are constructed once at main
-//      scope and shared across handlers.
-//   5. All Shutdown / Close calls are deferred in reverse construction order.
+//  1. main owns only the signal-aware root context and the exit code; all
+//     wiring lives in run(ctx) error, so deferred cleanups always execute.
+//  2. Network setup is bounded by a startup context (the *Context
+//     constructors). Shutdown uses a fresh bounded context, so a cancelled
+//     root context never skips flushing.
+//  3. otlp.NewProvider runs before logger.Init, so the OTLP writer is ready
+//     when the global logger is installed. run owns the provider lifecycle.
+//  4. serviceName is the same string passed to OTLP, the logger and the
+//     telemetry instrumenter, so logs and traces correlate.
+//  5. One *telemetry.Instrumenter is constructed once and passed down.
+//  6. Clients and pools (HTTP, pgx, messaging) are constructed once at run
+//     scope and shared across handlers. Never per request.
+//  7. Close / Shutdown calls are deferred in reverse construction order, and
+//     their errors are logged instead of dropped.
 //
-// NOTE: package "postgres" exposes the identifier `database`, package "mongo"
-// exposes `mongodb`. This is intentional. Do not rename the import.
+// In v2, package identifiers match their directories: import ".../v2/postgres"
+// and call postgres.New*; import ".../v2/mongo" and call mongo.New*.
 
 package main
 
 import (
 	"context"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
-	"github.com/trypanic/go-sdk/errorkit"
-	"github.com/trypanic/go-sdk/httpclient"
-	"github.com/trypanic/go-sdk/httprequest"
-	"github.com/trypanic/go-sdk/logger"
-	"github.com/trypanic/go-sdk/messaging"
-	"github.com/trypanic/go-sdk/postgres" // package identifier: database
-	"github.com/trypanic/go-sdk/telemetry"
+	"github.com/trypanic/go-sdk/v2/envs"
+	"github.com/trypanic/go-sdk/v2/errorkit"
+	"github.com/trypanic/go-sdk/v2/httpclient"
+	"github.com/trypanic/go-sdk/v2/httprequest"
+	"github.com/trypanic/go-sdk/v2/logger"
+	"github.com/trypanic/go-sdk/v2/logger/otlp"
+	"github.com/trypanic/go-sdk/v2/messaging"
+	"github.com/trypanic/go-sdk/v2/postgres"
+	"github.com/trypanic/go-sdk/v2/telemetry"
 )
 
 const (
 	serviceName    = "{{SERVICE_NAME}}"
 	serviceVersion = "{{SERVICE_VERSION}}"
-	otlpEndpoint   = "{{OTLP_ENDPOINT}}" // e.g. "otel-collector:4317"
+
+	startupTimeout  = 20 * time.Second
+	shutdownTimeout = 5 * time.Second
 )
 
+// config holds the values main reads explicitly. POSTGRES_DSN and
+// RABBITMQ_TOPOLOGY_FILE are read by the *FromEnv constructors instead.
+// Under the go-modularization layout, move this struct to internal/config/.
+type config struct {
+	OTLPEndpoint string `env:"OTEL_COLLECTOR_ENDPOINT,required,notEmpty"` // e.g. "otel-collector:4317"
+	RabbitMQURL  string `env:"RABBITMQ_URL,required,notEmpty"`
+}
+
 func main() {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	// 1. OTLP log provider. Installs the global OTel LoggerProvider.
-	//    Defer Shutdown first so it runs last on teardown.
-	logHandle, otlpWriter := logger.SetupOTLP(ctx, serviceName, otlpEndpoint)
-	defer logHandle.Shutdown(ctx)
+	if err := run(ctx); err != nil {
+		logFailure(ctx, err, "service failed")
+		stop()
+		os.Exit(1)
+	}
+}
 
-	// 2. Global zerolog logger, fanning out to stdout + OTLP.
-	_, cleanup := logger.Init(serviceName, serviceVersion, otlpWriter)
+func run(ctx context.Context) error {
+	cfg, err := envs.Load[config]()
+	if err != nil {
+		return err
+	}
+
+	startup, cancelStartup := context.WithTimeout(ctx, startupTimeout)
+	defer cancelStartup()
+
+	// 1. OTLP log provider. TLS by default; set otlp.Config.Insecure only for a
+	//    local plaintext collector. Deferred first, so it closes last.
+	provider, err := otlp.NewProvider(startup, otlp.Config{
+		ServiceName: serviceName,
+		Endpoint:    cfg.OTLPEndpoint,
+	})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		shutdown, cancel := shutdownContext(ctx)
+		defer cancel()
+		if err := provider.Close(shutdown); err != nil {
+			logFailure(shutdown, err, "log provider shutdown failed")
+		}
+	}()
+
+	// 2. Global zerolog logger, fanning out to stdout + OTLP. Reads ENVIRONMENT:
+	//    unset or unknown means Prod (JSON, Info); development/dev/local selects
+	//    console output.
+	_, cleanup := logger.Init(serviceName, serviceVersion, otlp.NewWriter(serviceName))
 	defer cleanup.Close()
 
-	// 3. Tracing instrumenter — pass to packages that take *Instrumenter.
-	instr := telemetry.NewInstrumenter(telemetry.InstrumenterConfig{
-		ScopeName: serviceName,
-	})
+	// 3. Tracing instrumenter, passed to every package that accepts one.
+	//    The SDK does not install a TracerProvider: install your own OTel trace
+	//    provider before this line (or pass it as InstrumenterConfig.TracerProvider),
+	//    otherwise every span is a no-op.
+	instr := telemetry.NewInstrumenter(telemetry.InstrumenterConfig{ScopeName: serviceName})
 
 	// 4. Outbound HTTP. One client + one requester, shared across goroutines.
-	httpC := httpclient.NewDefaultClient()
-	requester := httprequest.NewWithInstrumenter(httpC, instr)
+	//    For custom retry/audit options use httprequest.NewWithOptions and add
+	//    httprequest.WithInstrumenter(instr): NewWithOptions starts untraced.
+	httpClient := httpclient.NewDefaultClient()
+	defer httpClient.CloseIdleConnections()
+	requester := httprequest.NewWithInstrumenter(httpClient, instr)
 
-	// 5. Postgres pool. Reads POSTGRES_DSN from env via *FromEnv.
-	//    Tracing is added per StoredProcedure via database.WrapWithInstrumenter[T].
-	pool, err := database.NewPostgresClientFromEnv(database.Config{})
+	// 5. Postgres pool. Reads POSTGRES_DSN; the pool itself adds no spans.
+	//    Trace stored procedures with the shared instrumenter:
+	//      postgres.WrapWithInstrumenter[T](postgres.StoredProcedure[T]{Pool: pool}, instr)
+	//    Do not wrap the result of postgres.NewStoredProcedure[T]: it is already
+	//    traced with the global provider (two spans per call).
+	pool, err := postgres.NewFromEnvContext(startup, postgres.Config{})
 	if err != nil {
-		logger.Panic(err, "postgres init failed")
+		return err
 	}
 	defer pool.Close()
 
-	// 6. RabbitMQ. Topology source falls through:
-	//    WithTopology > WithTopologyFile > RABBITMQ_TOPOLOGY_FILE env.
-	mq, err := messaging.NewPubSub(os.Getenv("RABBITMQ_URL"))
+	// 6. RabbitMQ. Only the FromEnv family reads RABBITMQ_TOPOLOGY_FILE; an
+	//    explicit WithTopology / WithTopologyFile still wins. Add
+	//    messaging.WithDeclareTopology() when this service publishes to queues
+	//    that no subscriber has declared yet (unroutable publishes now fail).
+	mq, err := messaging.NewPubSubFromEnvContext(startup, cfg.RabbitMQURL,
+		messaging.WithInstrumenter(instr))
 	if err != nil {
-		logger.Panic(err, "messaging init failed")
+		return err
 	}
-	defer mq.Close()
+	defer func() {
+		if err := mq.Close(); err != nil {
+			logFailure(ctx, err, "messaging shutdown failed")
+		}
+	}()
 
 	// --- service wiring goes here ---
+	// Inject requester, pool and mq into the application's handlers, then
+	// replace the wait below with the server/worker loop. Servers do not
+	// handle signals: stop them with Shutdown(shutdownCtx) after ctx is done.
 	_ = requester
-	_ = errorkit.NewError // keep import; replace with real handlers
+
+	<-ctx.Done()
+	return nil
+}
+
+// shutdownContext returns a bounded context that keeps ctx values but ignores
+// its cancellation, so cleanup still runs after a shutdown signal.
+func shutdownContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+}
+
+// logFailure preserves an existing *errorkit.AppError anywhere in the chain
+// and wraps any other error exactly once.
+func logFailure(ctx context.Context, err error, message string) {
+	appErr, ok := errorkit.As(err)
+	if !ok {
+		appErr = errorkit.NewError(errorkit.ERR_INTERNAL).With(errorkit.WithWrapped(err))
+	}
+	logger.ErrorCtx(ctx, appErr, message)
 }
